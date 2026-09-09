@@ -85,7 +85,7 @@ describe('routeshot --help', () => {
     const result = await runCliAsync(process.cwd(), ['--help']);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('Screenshot every expo-router route');
+    expect(result.stdout).toContain('Screenshot every expo-router screen');
     expect(result.stdout).toMatch(/capture \[options\]\s+Deep link every route/);
     expect(result.stdout).toMatch(/upload \[options\] <run>\s+Send a run that is already on disk/);
     expect(result.stdout).toMatch(/compare \[options\] <baseline> <candidate>\s+Diff two runs/);

@@ -27,6 +27,10 @@ inputs:
     description: 'EAS update manifest URL to load before capturing: either https://u.expo.dev/update/<updateId> (the manifestPermalink from `eas update --json`) or https://u.expo.dev/<projectId>/group/<groupId>.'
     required: false
     default: ''
+  changed-since:
+    description: 'Git ref to diff against (e.g. origin/main). Only screens whose route file, layouts or imports changed are captured. Needs `fetch-depth: 0` on the checkout so the merge base exists.'
+    required: false
+    default: ''
   device:
     description: Simulator device name.
     required: false
@@ -73,6 +77,7 @@ runs:
         ROUTESHOT_SERVER_TOKEN: ${{ inputs.server-token }}
         INPUT_LABEL: ${{ inputs.label }}
         INPUT_UPDATE_URL: ${{ inputs.update-url }}
+        INPUT_CHANGED_SINCE: ${{ inputs.changed-since }}
         INPUT_DEVICE: ${{ inputs.device }}
         INPUT_DEV_CLIENT: ${{ inputs.dev-client }}
         DEFAULT_LABEL: ${{ github.head_ref || github.ref_name }}
@@ -80,6 +85,7 @@ runs:
         label="${INPUT_LABEL:-$DEFAULT_LABEL}"
         args=(capture --label "$label" --upload --json)
         if [ -n "$INPUT_UPDATE_URL" ]; then args+=(--update-url "$INPUT_UPDATE_URL"); fi
+        if [ -n "$INPUT_CHANGED_SINCE" ]; then args+=(--changed-since "$INPUT_CHANGED_SINCE"); fi
         if [ -n "$INPUT_DEVICE" ]; then args+=(--device "$INPUT_DEVICE"); fi
         if [ "$INPUT_DEV_CLIENT" = "true" ]; then args+=(--dev-client); fi
         if [ "$INPUT_DEV_CLIENT" = "false" ]; then args+=(--no-dev-client); fi

@@ -1,7 +1,7 @@
 {
   "name": "routeshot",
   "version": "0.1.0",
-  "description": "Screenshot every expo-router route, before and after an EAS update, and show what changed.",
+  "description": "Screenshot every expo-router screen a change touched, and ask Claude, code in hand, whether it looks broken.",
   "license": "MIT",
   "author": "Cole Blender",
   "bin": {

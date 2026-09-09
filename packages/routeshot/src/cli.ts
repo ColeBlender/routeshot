@@ -28,7 +28,9 @@ const { version } = createRequire(import.meta.url)('../package.json') as { versi
 
 const program = new Command()
   .name('routeshot')
-  .description('Screenshot every expo-router route and show what changed.')
+  .description(
+    'Screenshot every expo-router screen a change touched and ask whether it looks broken.'
+  )
   .version(version);
 
 program

@@ -1,12 +1,12 @@
 # routeshot
 
-Screenshot every expo-router route, before and after an EAS update, and show what changed.
+Screenshot every expo-router screen a change touched, and ask Claude, code in hand, whether it looks broken.
 This file is the map for humans and coding agents alike. Keep it accurate; keep it short.
 
 ## Layout
 
 - `packages/routeshot/` the npm package. Three entry points built by tsdown:
-  - `src/cli.ts` the `routeshot` binary (`capture`, `upload`, `compare`)
+  - `src/cli.ts` the `routeshot` binary (`capture`, `judge`, `upload`, `compare`)
   - `src/index.ts` the programmatic API
   - `src/expo.ts` the in-app hook for the EAS update-group mode (imports only `expo-updates`)
 - `packages/server/` the report server deployed to Railway (Hono + Postgres). Stores runs, diffs them, serves the HTML report, asks Claude for a verdict per changed screen.
@@ -15,10 +15,14 @@ This file is the map for humans and coding agents alike. Keep it accurate; keep 
 
 ## How the pieces talk
 
-CLI discovers routes with expo-router's own parser (vendored under `src/vendor/`), drives the iOS
-Simulator through `xcrun simctl` (ported from `@expo/cli` and Expo Orbit), deep-links into each
-route, waits for the screen to stop changing, screenshots it. `compare` diffs two runs with
-pixelmatch. `--upload` sends a run to the server; the server diffs, judges, and hosts the report.
+CLI discovers routes with expo-router's own parser (vendored under `src/vendor/`), walks each
+route's import graph (`affected.ts`) to pick the screens a git diff touches and to bundle the code
+behind each screen, drives the iOS Simulator through `xcrun simctl` (ported from `@expo/cli` and
+Expo Orbit), deep-links into each route, waits for the screen to stop changing, screenshots it.
+`judge` sends screenshot + code to Claude (`judge.ts`, one question: does this look broken?).
+`compare` diffs two runs with pixelmatch. `--upload` sends a run to the server; the server diffs,
+judges changed screens with the uploaded code, and hosts the report. The server keeps its own
+copy of `judge.ts` and the types (it must not depend on the CLI package); keep them identical.
 
 ## Conventions (Expo house style)
 
