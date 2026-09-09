@@ -34,6 +34,9 @@
   "pnpm": {
     "overrides": {
       "react-native": "0.86.3"
-    }
+    },
+    "ignoredBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
