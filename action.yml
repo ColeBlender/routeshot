@@ -35,6 +35,10 @@ inputs:
     description: '"true" to boot a development build from the dev server, "false" for a release build. Defaults to detection from package.json.'
     required: false
     default: ''
+  fail-on-change:
+    description: Fail the job when any route changed above the threshold. The report and comment are produced either way.
+    required: false
+    default: 'false'
   github-token:
     description: Token used to comment on the pull request.
     required: false
@@ -57,24 +61,33 @@ runs:
         corepack enable
         pnpm install --frozen-lockfile --filter routeshot
         pnpm --filter routeshot build
-        echo "ROUTESHOT_BIN=${{ github.action_path }}/packages/routeshot/dist/cli.js" >> "$GITHUB_ENV"
+        echo "ROUTESHOT_BIN=${GITHUB_ACTION_PATH}/packages/routeshot/dist/cli.js" >> "$GITHUB_ENV"
     - name: Capture and upload
       id: capture
       shell: bash
       working-directory: ${{ inputs.project-root }}
+      # Inputs reach the shell as environment variables, never as template expansions inside the
+      # script: a branch name is attacker-controlled on a pull request from a fork.
       env:
         ROUTESHOT_SERVER_URL: ${{ inputs.server-url }}
         ROUTESHOT_SERVER_TOKEN: ${{ inputs.server-token }}
+        INPUT_LABEL: ${{ inputs.label }}
+        INPUT_UPDATE_URL: ${{ inputs.update-url }}
+        INPUT_DEVICE: ${{ inputs.device }}
+        INPUT_DEV_CLIENT: ${{ inputs.dev-client }}
+        DEFAULT_LABEL: ${{ github.head_ref || github.ref_name }}
       run: |
-        label="${{ inputs.label }}"
-        if [ -z "$label" ]; then label="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"; fi
+        label="${INPUT_LABEL:-$DEFAULT_LABEL}"
         args=(capture --label "$label" --upload --json)
-        if [ -n "${{ inputs.update-url }}" ]; then args+=(--update-url "${{ inputs.update-url }}"); fi
-        if [ -n "${{ inputs.device }}" ]; then args+=(--device "${{ inputs.device }}"); fi
-        if [ "${{ inputs.dev-client }}" = "true" ]; then args+=(--dev-client); fi
-        if [ "${{ inputs.dev-client }}" = "false" ]; then args+=(--no-dev-client); fi
+        if [ -n "$INPUT_UPDATE_URL" ]; then args+=(--update-url "$INPUT_UPDATE_URL"); fi
+        if [ -n "$INPUT_DEVICE" ]; then args+=(--device "$INPUT_DEVICE"); fi
+        if [ "$INPUT_DEV_CLIENT" = "true" ]; then args+=(--dev-client); fi
+        if [ "$INPUT_DEV_CLIENT" = "false" ]; then args+=(--no-dev-client); fi
         node "$ROUTESHOT_BIN" "${args[@]}" > capture.json
-        echo "run-id=$(node -p "require('./capture.json').upload.id")" >> "$GITHUB_OUTPUT"
+        run_id=$(node -p "require('./capture.json').upload.id")
+        # A run id is a server-issued opaque token; anything else is a broken server, not an input.
+        if ! [[ "$run_id" =~ ^[A-Za-z0-9_-]+$ ]]; then echo "unexpected run id: $run_id" >&2; exit 1; fi
+        echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
     - name: Compare
       id: compare
       shell: bash
@@ -82,20 +95,29 @@ runs:
       env:
         ROUTESHOT_SERVER_URL: ${{ inputs.server-url }}
         ROUTESHOT_SERVER_TOKEN: ${{ inputs.server-token }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_FAIL_ON_CHANGE: ${{ inputs.fail-on-change }}
+        DEFAULT_BASELINE: ${{ github.event.repository.default_branch }}
+        RUN_ID: ${{ steps.capture.outputs.run-id }}
       run: |
-        baseline="${{ inputs.baseline }}"
-        if [ -z "$baseline" ]; then baseline="${{ github.event.repository.default_branch }}"; fi
-        node "$ROUTESHOT_BIN" compare "$baseline" "${{ steps.capture.outputs.run-id }}" --remote --no-fail --json > compare.json
+        baseline="${INPUT_BASELINE:-$DEFAULT_BASELINE}"
+        args=(compare "$baseline" "$RUN_ID" --remote --json)
+        if [ "$INPUT_FAIL_ON_CHANGE" != "true" ]; then args+=(--no-fail); fi
+        status=0
+        node "$ROUTESHOT_BIN" "${args[@]}" > compare.json || status=$?
         echo "report-url=$(node -p "require('./compare.json').url")" >> "$GITHUB_OUTPUT"
+        exit "$status"
     - name: Comment
-      if: github.event_name == 'pull_request'
-      uses: actions/github-script@v7
+      if: always() && github.event_name == 'pull_request' && steps.capture.outcome == 'success'
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        PROJECT_ROOT: ${{ inputs.project-root }}
       with:
         github-token: ${{ inputs.github-token }}
         script: |
           const fs = require('fs');
           const path = require('path');
-          const report = JSON.parse(fs.readFileSync(path.join('${{ inputs.project-root }}', 'compare.json'), 'utf8'));
+          const report = JSON.parse(fs.readFileSync(path.join(process.env.PROJECT_ROOT, 'compare.json'), 'utf8'));
           const s = report.summary;
           const verdicts = report.verdicts ?? [];
           const flagged = verdicts.filter((v) => v.level !== 'green');
