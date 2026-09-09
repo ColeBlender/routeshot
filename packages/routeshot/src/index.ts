@@ -12,7 +12,7 @@ export {
 } from './config.js';
 export { diffRunsAsync, type DiffOptions } from './diff.js';
 export { isRouteshotError, RouteshotError, type ErrorCode } from './errors.js';
-export { enableJsonOutput, isJsonOutput, Log } from './log.js';
+export { enableJsonOutput, Log } from './log.js';
 export { renderReport, writeReportAsync } from './report.js';
 export { discoverRoutesAsync } from './routes.js';
 export {

@@ -151,7 +151,7 @@ async function captureRouteAsync(context: {
 
   const file = `${routeSlug(key)}.png`;
   try {
-    await sim.openUrlAsync(udid, `${config.scheme}://${route.pathname.replace(/^\//, '')}`);
+    await sim.openUrlAsync(udid, `${config.scheme}://${deepLinkPath(route.pathname)}`);
 
     const waitFor = config.routes.waitFor[key];
     const frame = await waitForSettledFrameAsync(sim, udid, {
@@ -250,6 +250,15 @@ async function applyUpdateOverrideAsync(
   });
   await sim.terminateAsync(udid, config.bundleId);
   await sim.launchAsync(udid, config.bundleId);
+}
+
+/** Param fixtures are plain strings; a space or `?` in one must not change the URL's shape. */
+function deepLinkPath(pathname: string): string {
+  return pathname
+    .split('/')
+    .filter((segment) => segment !== '')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
 }
 
 /** The exact object to paste into `routeshot.config`, with every dynamic segment spelled out. */

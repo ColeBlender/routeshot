@@ -129,6 +129,26 @@ describe('captureAsync', () => {
     expect(onDisk.routes).toEqual(run.routes.map((entry) => JSON.parse(JSON.stringify(entry))));
   });
 
+  it('percent-encodes param values in the deep link', async () => {
+    const sim = new FakeSimulator({ devices: [DEVICE] });
+    const projectRoot = await makeProjectRootAsync();
+    const routes: Route[] = [
+      {
+        pathname: '/users/first last?',
+        template: '/users/[id]',
+        dynamic: true,
+        params: { id: 'first last?' },
+        sourceFile: 'users/[id].tsx',
+      },
+    ];
+
+    await captureAsync({ projectRoot, config: CONFIG, sim }, makeDeps(routes));
+
+    expect(sim.callsTo('openUrlAsync').map((call) => call.args[1])).toEqual([
+      'demo://users/first%20last%3F',
+    ]);
+  });
+
   it('boots the device and pins appearance and the status bar before the first route', async () => {
     const projectRoot = await makeProjectRootAsync();
     const sim = new FakeSimulator({ devices: [DEVICE] });

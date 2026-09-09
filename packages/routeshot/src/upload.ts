@@ -99,7 +99,9 @@ export async function resolveRemoteRunIdAsync(
   options: ServerOptions,
   ref: string
 ): Promise<string> {
-  const byId = await fetch(absolute(options.serverUrl, `/runs/${encodeURIComponent(ref)}`));
+  const byId = await fetch(absolute(options.serverUrl, `/runs/${encodeURIComponent(ref)}`), {
+    headers: { Authorization: `Bearer ${options.token}` },
+  });
   if (byId.ok) {
     return ref;
   }

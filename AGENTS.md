@@ -36,7 +36,7 @@ pixelmatch. `--upload` sends a run to the server; the server diffs, judges, and 
 ```
 pnpm check                 # lint, format check, typecheck, test, build
 pnpm --filter routeshot test
-pnpm --filter @routeshot/server dev
+pnpm --filter @routeshot/server build && pnpm --filter @routeshot/server dev   # needs packages/server/.env
 cd example && npx expo run:ios
 ```
 

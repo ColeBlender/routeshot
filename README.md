@@ -15,15 +15,20 @@ the broken build on the right. `compare` reported it as 10.65% changed; the mode
 ## Quickstart (macOS, Xcode, an iOS simulator)
 
 ```sh
-pnpm add -D routeshot            # or: npx routeshot
-npx expo run:ios                 # your dev build, running on the simulator
-npx routeshot capture --label before
-# change something
-npx routeshot capture --label after
-npx routeshot compare before after --open
+git clone https://github.com/ColeBlender/routeshot && cd routeshot
+pnpm install && pnpm build
+cd example && npx expo run:ios        # builds the example app and starts Metro
+pnpm exec routeshot capture --label before
+# change a screen (or restart Metro with EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken)
+pnpm exec routeshot capture --label after
+pnpm exec routeshot compare before after --open
 ```
 
+Point it at your own app instead: run the same `capture` from your project directory. Scheme and
+bundle id come from `app.json`; a development build is detected from `expo-dev-client` in your
+dependencies and booted from Metro; dynamic routes need params in `routeshot.config.ts`.
 `compare` exits 1 when a screen changed more than the threshold, so it drops straight into CI.
+The package is not on npm yet; the `@v1` tag and `npx routeshot` arrive with the public release.
 
 ## How it works
 
@@ -41,7 +46,7 @@ flowchart LR
 - Routes come from `expo-router`'s `getRoutesCore`, vendored, so the list cannot drift from what the router would actually serve.
 - The simulator layer is a port of `@expo/cli`'s `simctl.ts` and Expo Orbit's `simulator.ts`.
 - A screen counts as settled when two consecutive frames 300 ms apart are identical, with a 5 s cap and a per-route override.
-- Identical pixels never call the model. Changed screens are sent as before, after, and diff mask; the model returns a score, a defect class, and a one-line caption. Two hard-coded thresholds map the score to green, yellow, or red. When it cannot judge, the result is `unverified`, never a silent green.
+- Identical pixels never call the model. Changed screens are sent as before, after, and diff mask; the model returns a score, a defect class, and a one-line caption. Two thresholds (`JUDGE_YELLOW` 40, `JUDGE_RED` 75 by default) map the score to green, yellow, or red. When it cannot judge, the result is `unverified`, never a silent green.
 
 ## EAS update mode
 
@@ -57,7 +62,7 @@ exact `eas.json` and `app.config.ts`.
 ## GitHub Action
 
 ```yaml
-- uses: ColeBlender/routeshot@v1
+- uses: ColeBlender/routeshot@main
   with:
     project-root: example
     server-url: ${{ secrets.ROUTESHOT_SERVER_URL }}
@@ -66,6 +71,9 @@ exact `eas.json` and `app.config.ts`.
 
 Runs on a macOS runner, uploads the run to the report server, and leaves one comment on the PR
 that lists the screens that changed with the model's caption and a link to the side-by-sides.
+Set `fail-on-change: true` to fail the job when anything changed above the threshold. Inputs are
+passed to the scripts as environment variables, never interpolated into them, since a branch name
+on a fork PR is attacker-controlled.
 
 ## Report server
 
@@ -75,12 +83,10 @@ baselines by branch, and runs the judge with your `ANTHROPIC_API_KEY`. Deploy it
 
 ## Limitations
 
-<!-- numbers below are filled from the measured spike runs -->
-
 - iOS only. The `Simulator` interface is the seam for an `adb` adapter.
 - Dynamic routes (`[id]`) need params in `routeshot.config.ts`; without them the route is skipped loudly and the exact snippet to paste is printed.
 - Screens behind authentication capture whatever the app shows when opened cold.
-- Routes that exist only through `generateStaticParams` are not discovered; list them in `routes.params`.
+- Route modules are never evaluated, so routes that exist only through `generateStaticParams` are not discovered. One params fixture per dynamic template is captured.
 - Settle detection is a heuristic. Screens with permanent animation hit the 5 s cap and are reported as not settled.
 - Pixel noise was measured at zero on one machine. Baselines and candidates should still come from the same runner image; a hosted macOS runner has not been measured yet.
 - The judge's score is not calibrated probability. Thresholds were tuned on the example app's labeled screens only (`pnpm judge:eval`).

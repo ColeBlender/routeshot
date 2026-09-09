@@ -4,14 +4,8 @@ import pc from 'picocolors';
  * All human-facing output goes to stderr so `--json` can own stdout.
  * Mirrors the shape of eas-cli's Log module: no console.log anywhere else in the package.
  */
-let jsonMode = false;
-
 export function enableJsonOutput(): void {
-  jsonMode = true;
-}
-
-export function isJsonOutput(): boolean {
-  return jsonMode;
+  // Nothing to flip: `Log.json` is the only stdout writer, and the commands only call it under --json.
 }
 
 function write(line: string): void {

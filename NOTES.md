@@ -14,8 +14,8 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 - TS 6.0.3, not 7: Expo repos are on 6.x, and tsdown/oxlint-tsgolint compat with 7 is unverified.
 - oxlint `node` + `typescript-analysis` presets from oxlint-config-universe, plus eas-cli's hand-picked rules (no-console, curly, no lodash, async-suffix via eslint-plugin-async-protect, which is what eas-cli uses).
 - Vitest `projects` at the root, one config per package. Tests in `__tests__/` next to src (Expo convention), `*.test.ts` naming (Vitest default).
-- action.yml assumes `routeshot compare <baseline> <run> --remote` (server-side compare by id/branch alias `main`). The CLI agent was told compare takes run ids/dirs/latest/previous. Reconcile: add `--remote` (calls GET /compare on the server) or have the action call the server with curl. Decide after the CLI report.
-- README drafted with placeholders: hero image, measured settle/noise numbers, the "decision against Claude's output" line.
+- RESOLVED: `compare --remote` exists (server-side compare, refs are server run ids or branch names) and action.yml uses it.
+- RESOLVED: README has the real hero run, the measured numbers, and the threshold decision.
 
 ## Spike measurements (2026-09-09, iPhone 17 Pro, iOS 26.5, dev client + Metro, example app)
 
@@ -28,3 +28,9 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 - expo-dev-client: the launcher swallows the first deep link, so capture opens `exp+<slug>://expo-development-client/?url=<metro>` first (bootDevClientAsync). expo-dev-menu's gear FAB and onboarding sheet are turned off through its own defaults keys (configureDevMenuAsync). Same launcher link loads an EAS update manifest URL, so `--update-url` on a dev client needs no anti-bricking override at all.
 - `pod install` needs LANG=en_US.UTF-8 on this Mac (Ruby 4 encoding crash); `expo prebuild` still exits 0 when it fails. CI must export it.
 - c12 prints a Node MODULE_TYPELESS_PACKAGE_JSON warning when loading routeshot.config.ts from an app without "type": "module". Cosmetic; look at c12 jiti options or document.
+
+## Review gate (2026-09-09 13:00 PT, Opus with eas-cli's .expo-code-review prompts + slop checklist)
+
+- Verdict: hire signal. Blocking: Actions template injection in action.yml (inputs interpolated into run: and the github-script body), /compare returning a dead link on a race (ON CONFLICT DO NOTHING). Both fixed.
+- Should-fix done: fail-on-change input, judge structured-output latch scoped, Postgres service container in CI so the real store is tested, upload id-probe sends the token, action SHAs pinned, MemoryStore dev path, stale docs.
+- Left as nits on purpose: two HTML renderers (CLI and server) share no code by design (the package must not depend on the server); routeSlug collision between `/a/b` and a literal `/a__b` route is theoretical.
