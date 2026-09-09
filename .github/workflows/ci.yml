@@ -44,12 +44,17 @@ jobs:
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
       - name: Build example app
         working-directory: example
+        env:
+          # CocoaPods crashes on a non-UTF-8 locale, and `expo prebuild` still exits 0 when it does.
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
         run: |
-          npx expo prebuild --platform ios --no-install
-          npx expo run:ios --no-bundler --device "$SIM_UDID"
+          npx expo prebuild --platform ios
+          npx expo run:ios --configuration Release --no-bundler --device "$SIM_UDID"
       - name: Capture
         working-directory: example
-        run: npx routeshot capture --label ci --json > capture.json
+        # A Release build embeds its bundle, so there is no Metro to boot from.
+        run: pnpm exec routeshot capture --no-dev-client --label ci --json > capture.json
       - uses: actions/upload-artifact@v4
         with:
           name: routeshot-run
