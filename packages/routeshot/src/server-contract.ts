@@ -63,6 +63,9 @@ export const CompareResponseSchema = z.looseObject({
   verdicts: z.array(VerdictSchema).optional(),
 });
 
+/** `POST /judge` — `{ content }` in, the model's text out; the CLI parses and scores it. */
+export const RemoteJudgeResponseSchema = z.object({ text: z.string() });
+
 export type UploadRunResponse = z.infer<typeof UploadRunResponseSchema>;
 export type RunSummary = z.infer<typeof RunSummarySchema>;
 export type CompareResponse = z.infer<typeof CompareResponseSchema>;

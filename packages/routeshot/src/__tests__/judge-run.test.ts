@@ -148,4 +148,12 @@ describe('judgeDepsFromEnv', () => {
       /JUDGE_RED/
     );
   });
+
+  it('falls back to the report server when there is no key, and to nothing without either', () => {
+    const server = { url: 'https://routeshot.example.com', token: 'demo' };
+    expect(judgeDepsFromEnv({}, server).model).toBe(DEFAULT_JUDGE_MODEL);
+    expect(() => judgeDepsFromEnv({ ANTHROPIC_API_KEY: '' }, undefined)).toThrow(
+      /ANTHROPIC_API_KEY.*report server/
+    );
+  });
 });

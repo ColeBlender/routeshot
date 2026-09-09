@@ -85,3 +85,45 @@ export function parseCaptureRun(value: unknown): CaptureRun {
     })),
   };
 }
+
+/**
+ * `POST /judge` body: the content blocks of one judge request, screenshot plus code. The system
+ * prompt and the model are the server's own, never the caller's, so a demo token only ever buys
+ * the one question the judge asks.
+ */
+const judgeContentSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string().max(200_000) }),
+  z.object({
+    type: z.literal('image'),
+    source: z.object({
+      type: z.literal('base64'),
+      media_type: z.literal('image/png'),
+      data: z.string().max(8_000_000),
+    }),
+  }),
+]);
+
+const judgeBodySchema = z.object({
+  content: z
+    .array(judgeContentSchema)
+    .min(1)
+    .max(8)
+    .refine((blocks) => blocks.filter((block) => block.type === 'image').length === 1, {
+      message: 'exactly one image block is required',
+    }),
+});
+
+export type JudgeBody = z.infer<typeof judgeBodySchema>;
+
+export function parseJudgeBody(value: unknown): JudgeBody {
+  const result = judgeBodySchema.safeParse(value);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue ? issue.path.join('.') || '(root)' : '(root)';
+    throw new ServerError(
+      'BAD_REQUEST',
+      `not a valid judge request: ${where}: ${issue?.message ?? 'unknown error'}`
+    );
+  }
+  return result.data;
+}

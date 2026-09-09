@@ -5,10 +5,10 @@ import { timingSafeEqual } from 'node:crypto';
 import { compareRunsAsync } from './compare.js';
 import { ServerError, isServerError } from './errors.js';
 import { newId } from './ids.js';
-import type { JudgeDeps } from './judge.js';
+import { JUDGE_MAX_TOKENS, JUDGE_SYSTEM_PROMPT, type JudgeDeps } from './judge.js';
 import type { Logger } from './log.js';
 import { renderReportHtml } from './report-html.js';
-import { parseCaptureRun } from './schemas.js';
+import { parseCaptureRun, parseJudgeBody } from './schemas.js';
 import type { Store, StoredFile } from './store.js';
 
 export interface AppDeps {
@@ -16,6 +16,12 @@ export interface AppDeps {
   version: string;
   /** Single shared token per repo for v1, checked on writes and on the compare endpoint. */
   token: string;
+  /**
+   * Optional second token that only `POST /judge` accepts. It is what lets a fresh clone of the
+   * example app run the judge with no Anthropic key of its own, so it is committed to the repo and
+   * spends against the same daily cap as everything else.
+   */
+  demoToken: string | undefined;
   /** Undefined turns the AI verdict off; reports are still produced, with `verdicts: undefined`. */
   judge: JudgeDeps | undefined;
   logger: Logger;
@@ -45,14 +51,37 @@ function tokensMatch(provided: string, expected: string): boolean {
 
 export function createApp(deps: AppDeps) {
   const app = new Hono();
-  const compareWindows = new Map<string, { resetAt: number; count: number }>();
+  const rateWindows = new Map<string, { resetAt: number; count: number }>();
 
-  const requireToken = (header: string | undefined): string => {
+  const requireToken = (header: string | undefined, allowDemo = false): string => {
     const provided = header?.startsWith('Bearer ') === true ? header.slice(7) : undefined;
-    if (provided === undefined || !tokensMatch(provided, deps.token)) {
+    if (provided === undefined) {
       throw new ServerError('UNAUTHORIZED', 'missing or invalid bearer token');
     }
-    return provided;
+    if (tokensMatch(provided, deps.token)) {
+      return provided;
+    }
+    if (allowDemo && deps.demoToken !== undefined && tokensMatch(provided, deps.demoToken)) {
+      return provided;
+    }
+    throw new ServerError('UNAUTHORIZED', 'missing or invalid bearer token');
+  };
+
+  /** One fixed window per token and endpoint; the demo token shares the compare limit. */
+  const rateLimit = (bucket: string, token: string, what: string): void => {
+    const now = deps.now().getTime();
+    const key = `${bucket}:${token}`;
+    const window = rateWindows.get(key);
+    if (!window || window.resetAt <= now) {
+      rateWindows.set(key, { resetAt: now + 60_000, count: 1 });
+    } else if (window.count >= deps.compareRateLimit) {
+      throw new ServerError(
+        'RATE_LIMITED',
+        `more than ${deps.compareRateLimit} ${what} in a minute`
+      );
+    } else {
+      window.count += 1;
+    }
   };
 
   app.use('*', async (c, next) => {
@@ -186,20 +215,57 @@ export function createApp(deps: AppDeps) {
     return c.body(toBody(bytes), 200, PNG_HEADERS);
   });
 
+  /**
+   * One judge question, answered with the server's key, prompt and model. The CLI calls this when
+   * it has no `ANTHROPIC_API_KEY` of its own; the body is the content blocks it would have sent
+   * to Anthropic directly, and the reply is the model's text, parsed and scored on the CLI side
+   * exactly as a local answer would be.
+   */
+  app.post('/judge', async (c) => {
+    const token = requireToken(c.req.header('authorization'), true);
+    rateLimit('judge', token, 'judge calls');
+    if (!deps.judge) {
+      throw new ServerError('JUDGE_DISABLED', 'this server runs without an Anthropic key');
+    }
+
+    const body = parseJudgeBody(
+      await c.req.json().catch(() => {
+        throw new ServerError('BAD_REQUEST', 'expected a JSON body');
+      })
+    );
+
+    const day = deps.now().toISOString().slice(0, 10);
+    if (deps.judge.quota) {
+      const used = await deps.judge.quota.countAsync(day);
+      if (used >= deps.judge.quota.cap) {
+        throw new ServerError('RATE_LIMITED', 'daily judge cap reached, try again tomorrow');
+      }
+      await deps.judge.quota.recordAsync(day, 1);
+    }
+
+    let text: string;
+    try {
+      const response = await deps.judge.anthropic.parseAsync(
+        {
+          model: deps.judge.model,
+          maxTokens: JUDGE_MAX_TOKENS,
+          system: JUDGE_SYSTEM_PROMPT,
+          content: body.content,
+        },
+        AbortSignal.timeout(deps.judge.timeoutMs)
+      );
+      text = response.text;
+    } catch (error) {
+      // Nothing was bought, so the reservation goes back; the CLI reports the screen unverified.
+      await deps.judge.quota?.recordAsync(day, -1);
+      throw new ServerError('JUDGE_UNAVAILABLE', 'the model did not answer', { cause: error });
+    }
+    return c.json({ text });
+  });
+
   app.get('/compare', async (c) => {
     const token = requireToken(c.req.header('authorization'));
-    const now = deps.now().getTime();
-    const window = compareWindows.get(token);
-    if (!window || window.resetAt <= now) {
-      compareWindows.set(token, { resetAt: now + 60_000, count: 1 });
-    } else if (window.count >= deps.compareRateLimit) {
-      throw new ServerError(
-        'RATE_LIMITED',
-        `more than ${deps.compareRateLimit} compares in a minute`
-      );
-    } else {
-      window.count += 1;
-    }
+    rateLimit('compare', token, 'compares');
 
     const baselineId = c.req.query('baseline');
     const candidateId = c.req.query('candidate');

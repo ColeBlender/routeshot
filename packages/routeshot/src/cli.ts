@@ -56,7 +56,7 @@ program
   )
   .option(
     '--judge',
-    'after capturing, ask the model whether each screen looks broken (needs ANTHROPIC_API_KEY)'
+    'after capturing, ask the model whether each screen looks broken (ANTHROPIC_API_KEY, or a report server)'
   )
   .option('--no-fail', 'with --judge, exit 0 even when a screen is red')
   .option('--open', 'with --judge, open the report in the default browser')
@@ -121,9 +121,9 @@ async function captureCommandAsync(options: CaptureCommandOptions): Promise<void
 
   const projectRoot = process.cwd();
   loadDotenv(projectRoot);
-  // Fail before the simulator boots when the judge was asked for but cannot run.
-  const judgeDeps = options.judge ? judgeDepsFromEnv() : undefined;
   const loaded = await loadRouteshotConfigAsync(projectRoot);
+  // Fail before the simulator boots when the judge was asked for but cannot run.
+  const judgeDeps = options.judge ? judgeDepsFromEnv(process.env, loaded.server) : undefined;
   const config: RouteshotConfig = {
     ...loaded,
     ...(options.device === undefined ? {} : { device: options.device }),
@@ -197,7 +197,10 @@ async function judgeCommandAsync(runRef: string, options: JudgeCommandOptions): 
   }
   const projectRoot = process.cwd();
   loadDotenv(projectRoot);
-  const deps = judgeDepsFromEnv();
+  // The run may be judged from a checkout with no Expo app (CI), so a config that will not load
+  // only costs the report-server fallback, not the command.
+  const server = (await loadRouteshotConfigAsync(projectRoot).catch(() => undefined))?.server;
+  const deps = judgeDepsFromEnv(process.env, server);
   const dir = await resolveRunDirAsync(projectRoot, runRef);
   let run: CaptureRun;
   try {

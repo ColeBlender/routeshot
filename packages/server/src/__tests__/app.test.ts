@@ -43,6 +43,7 @@ function build(overrides: Partial<AppDeps> = {}) {
     store,
     version: '0.1.0',
     token: TOKEN,
+    demoToken: undefined,
     judge: undefined,
     logger: silentLogger,
     now: () => new Date('2026-09-09T12:00:00.000Z'),
@@ -527,5 +528,103 @@ describe('GET /r/:compareId', () => {
 
   it('404s an unknown report', async () => {
     expect((await build().request('/r/nope')).status).toBe(404);
+  });
+});
+
+describe('POST /judge', () => {
+  const DEMO = 'demo-token';
+  const body = JSON.stringify({
+    content: [
+      { type: 'text', text: 'Route: /' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+    ],
+  });
+  const post = (app: ReturnType<typeof build>, token: string, payload: string = body) =>
+    app.request('/judge', {
+      method: 'POST',
+      body: payload,
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    });
+
+  it('answers with the model text for the repo token and the demo token, using its own prompt', async () => {
+    const judge = fakeJudge(() => ({ text: '{"score":3,"defect":"none","caption":"fine"}' }));
+    const app = build({ demoToken: DEMO, judge: judgeDeps(judge) });
+
+    for (const token of [TOKEN, DEMO]) {
+      const response = await post(app, token);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        text: '{"score":3,"defect":"none","caption":"fine"}',
+      });
+    }
+    expect(judge.requests).toHaveLength(2);
+    expect(judge.requests[0]?.system).toContain('visual defects');
+    expect(judge.requests[0]?.model).toBe(DEFAULT_JUDGE_MODEL);
+    expect(judge.requests[0]?.content).toHaveLength(2);
+  });
+
+  it('never lets the demo token write runs or compare', async () => {
+    const app = build({ demoToken: DEMO, judge: judgeDeps(fakeJudge(() => ({ text: '{}' }))) });
+    expect(
+      (
+        await uploadAsync(
+          app,
+          makeRun(),
+          { 'index.png': makePng(4, 4, [0, 0, 0]) },
+          { token: DEMO }
+        )
+      ).status
+    ).toBe(401);
+    expect(
+      (
+        await app.request('/compare?baseline=a&candidate=b', {
+          headers: { authorization: `Bearer ${DEMO}` },
+        })
+      ).status
+    ).toBe(401);
+    expect((await post(app, 'nope')).status).toBe(401);
+  });
+
+  it('rejects a body without exactly one image, and reports a server without a key', async () => {
+    const app = build({ demoToken: DEMO, judge: judgeDeps(fakeJudge(() => ({ text: '{}' }))) });
+    const noImage = await post(
+      app,
+      DEMO,
+      JSON.stringify({ content: [{ type: 'text', text: 'x' }] })
+    );
+    expect(noImage.status).toBe(400);
+    expect((await post(app, DEMO, 'not json')).status).toBe(400);
+    expect((await post(build({ demoToken: DEMO }), DEMO)).status).toBe(501);
+  });
+
+  it('spends the daily cap and hands the call back when the model fails', async () => {
+    let calls = 0;
+    const judge = fakeJudge(() => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('upstream down');
+      }
+      return { text: '{"score":1,"defect":"none","caption":"ok"}' };
+    });
+    const app = build({
+      demoToken: DEMO,
+      judge: judgeDeps(judge, {
+        quota: {
+          cap: 1,
+          countAsync: async (day) => await store.countJudgeCallsAsync(day),
+          recordAsync: async (day, count) => {
+            await store.recordJudgeCallsAsync(day, count);
+          },
+        },
+      }),
+    });
+
+    expect((await post(app, DEMO)).status).toBe(502);
+    expect(await store.countJudgeCallsAsync('2026-09-09')).toBe(0);
+    expect((await post(app, DEMO)).status).toBe(200);
+    expect(await store.countJudgeCallsAsync('2026-09-09')).toBe(1);
+    const capped = await post(app, DEMO);
+    expect(capped.status).toBe(429);
+    expect(((await capped.json()) as { error: string }).error).toContain('daily judge cap');
   });
 });

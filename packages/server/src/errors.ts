@@ -8,6 +8,8 @@ export type ServerErrorCode =
   | 'BAD_REQUEST'
   | 'NOT_FOUND'
   | 'RATE_LIMITED'
+  | 'JUDGE_DISABLED'
+  | 'JUDGE_UNAVAILABLE'
   | 'CONFIG'
   | 'STORAGE';
 
@@ -16,6 +18,8 @@ const STATUS: Record<ServerErrorCode, number> = {
   BAD_REQUEST: 400,
   NOT_FOUND: 404,
   RATE_LIMITED: 429,
+  JUDGE_DISABLED: 501,
+  JUDGE_UNAVAILABLE: 502,
   CONFIG: 500,
   STORAGE: 500,
 };

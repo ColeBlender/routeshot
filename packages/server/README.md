@@ -7,20 +7,24 @@ Private to the monorepo (not published). See `../../README.md` for what routesho
 
 ## Endpoints
 
-| Method | Path                                       | Auth   | Returns                       |
-| ------ | ------------------------------------------ | ------ | ----------------------------- |
-| GET    | `/health`                                  | none   | `{ ok: true, version }`       |
-| POST   | `/runs`                                    | bearer | `201 { id, url }`             |
-| GET    | `/runs?repo=&branch=&limit=`               | bearer | `{ runs: RunSummary[] }`      |
-| GET    | `/runs/:id`                                | none   | the `CaptureRun` index        |
-| GET    | `/runs/:id/files/:name`                    | none   | `image/png`                   |
-| GET    | `/compare?baseline=&candidate=&threshold=` | bearer | `CompareReport & { id, url }` |
-| GET    | `/r/:compareId`                            | none   | the HTML report               |
-| GET    | `/r/:compareId/files/:name`                | none   | `image/png` (diff masks)      |
+| Method | Path                                       | Auth           | Returns                        |
+| ------ | ------------------------------------------ | -------------- | ------------------------------ |
+| GET    | `/health`                                  | none           | `{ ok: true, version }`        |
+| POST   | `/runs`                                    | bearer         | `201 { id, url }`              |
+| GET    | `/runs?repo=&branch=&limit=`               | bearer         | `{ runs: RunSummary[] }`       |
+| GET    | `/runs/:id`                                | none           | the `CaptureRun` index         |
+| GET    | `/runs/:id/files/:name`                    | none           | `image/png`                    |
+| GET    | `/compare?baseline=&candidate=&threshold=` | bearer         | `CompareReport & { id, url }`  |
+| POST   | `/judge`                                   | bearer or demo | `{ text }`, the model's answer |
+| GET    | `/r/:compareId`                            | none           | the HTML report                |
+| GET    | `/r/:compareId/files/:name`                | none           | `image/png` (diff masks)       |
 
 Reads are unauthenticated on purpose: a browser rendering `/r/:id` cannot send a bearer token, so
 run and compare ids are 22 characters of base64url from `randomBytes(16)` and the id is the
-capability. Writes and `/compare` (which spends money on the judge) require the shared token.
+capability. Writes and `/compare` (which spends money on the judge) require the shared token. `POST /judge`
+also accepts `ROUTESHOT_DEMO_TOKEN`, a second token that buys nothing but the judge's one
+question with the server's own prompt and model, under the same daily cap; the example app
+commits it so a fresh clone needs no key.
 
 ## Local development
 

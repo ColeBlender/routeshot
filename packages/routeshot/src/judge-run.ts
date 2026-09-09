@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { RouteshotError } from './errors.js';
+import { createRemoteJudgeModel } from './judge-remote.js';
 import { renderJudgeReport } from './judge-report.js';
 import {
   createAnthropicJudgeModel,
@@ -86,16 +87,20 @@ export async function judgeRunAsync(options: JudgeRunOptions): Promise<JudgeRunR
 }
 
 /**
- * Model access from the environment: `ANTHROPIC_API_KEY` (required), `ANTHROPIC_MODEL`,
- * `JUDGE_YELLOW`, `JUDGE_RED`. The same four knobs the report server reads, so a verdict from a
- * laptop and one from the server are the same verdict.
+ * Model access from the environment: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `JUDGE_YELLOW`,
+ * `JUDGE_RED`. The same four knobs the report server reads, so a verdict from a laptop and one
+ * from the server are the same verdict. Without a key, a configured report server answers
+ * instead (its key, its model); without either there is no judge.
  */
-export function judgeDepsFromEnv(env: NodeJS.ProcessEnv = process.env): JudgeDeps {
+export function judgeDepsFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  server: { url: string; token: string } | undefined = undefined
+): JudgeDeps {
   const apiKey = env['ANTHROPIC_API_KEY'];
-  if (apiKey === undefined || apiKey === '') {
+  if ((apiKey === undefined || apiKey === '') && server === undefined) {
     throw new RouteshotError(
       'CONFIG',
-      'The judge needs ANTHROPIC_API_KEY in the environment (or in .env.local next to the app).'
+      'The judge needs ANTHROPIC_API_KEY (in the shell or in .env.local next to the app), or a report server in routeshot.config to ask instead.'
     );
   }
   const threshold = (name: string, fallback: number): number => {
@@ -110,7 +115,10 @@ export function judgeDepsFromEnv(env: NodeJS.ProcessEnv = process.env): JudgeDep
     return value;
   };
   return {
-    anthropic: createAnthropicJudgeModel(new Anthropic({ apiKey })),
+    anthropic:
+      apiKey === undefined || apiKey === ''
+        ? createRemoteJudgeModel(server as { url: string; token: string })
+        : createAnthropicJudgeModel(new Anthropic({ apiKey })),
     model:
       env['ANTHROPIC_MODEL'] === undefined || env['ANTHROPIC_MODEL'] === ''
         ? DEFAULT_JUDGE_MODEL

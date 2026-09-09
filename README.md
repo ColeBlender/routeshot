@@ -2,8 +2,7 @@
 
 Catches broken screens in your Expo app before you ship them.
 
-Add one line to your test script. Every time it runs, routeshot uses Claude (bring your own
-Anthropic API key) to:
+Add one line to your test script. Every time it runs, routeshot uses Claude to:
 
 1. Figure out which screens your change touched. ([how](docs/details.md#how-it-works))
 2. Open each of those screens on the iOS Simulator and screenshot it.
@@ -17,13 +16,13 @@ nothing to maintain.
 ## See it work
 
 This repo includes a small example app with a switch that breaks five of its screens on purpose.
-You need a Mac with Xcode, Node 22+, pnpm (`corepack enable`), and an Anthropic API key.
+You need a Mac with Xcode, Node 22+, and pnpm (`corepack enable`). No API key: for this demo the
+example app asks a hosted judge that holds a capped Anthropic key.
 
 ```sh
 git clone https://github.com/ColeBlender/routeshot && cd routeshot
 pnpm install
-cd example && echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
-npx expo run:ios
+cd example && npx expo run:ios
 ```
 
 That builds the example app and leaves Metro running. In a second terminal, in `example/`:
@@ -48,8 +47,10 @@ Here is that report, hosted: https://routeshot-server-production.up.railway.app/
 "test": "vitest run && routeshot capture --changed-since origin/main --judge"
 ```
 
-Not on npm yet: clone this repo and `pnpm link` the package until the public release. Details,
-options, the GitHub Action, and the honest list of limitations: [docs/details.md](docs/details.md).
+Put your own `ANTHROPIC_API_KEY` in `.env.local`, or point `routeshot.config.ts` at your own
+report server. Not on npm yet: clone this repo and `pnpm link` the package until the public
+release. Details, options, the GitHub Action, and the honest list of limitations:
+[docs/details.md](docs/details.md).
 
 ## License
 

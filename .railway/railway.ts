@@ -38,6 +38,7 @@ export default defineRailway(() => {
       // Secrets stay on Railway. `preserve()` keeps whatever is already set, so the values are
       // never written into git; set them once with `railway variables --set` or in the dashboard.
       ROUTESHOT_TOKEN: preserve(),
+      ROUTESHOT_DEMO_TOKEN: preserve(),
       ANTHROPIC_API_KEY: preserve(),
       // Everything below is the same default `.env.example` documents, pinned here so the
       // deployed judge cannot silently drift from the one the eval script scores.

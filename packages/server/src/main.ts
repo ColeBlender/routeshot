@@ -24,6 +24,11 @@ function required(name: string): string {
   return value;
 }
 
+function optional(name: string): string | undefined {
+  const value = process.env[name];
+  return value === undefined || value === '' ? undefined : value;
+}
+
 function numberFromEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === '') {
@@ -91,6 +96,7 @@ async function mainAsync(): Promise<void> {
     store,
     version: VERSION,
     token: required('ROUTESHOT_TOKEN'),
+    demoToken: optional('ROUTESHOT_DEMO_TOKEN'),
     judge: buildJudgeDeps(store),
     logger: Log,
     now: () => new Date(),
