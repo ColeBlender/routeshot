@@ -71,7 +71,7 @@ that lists the screens that changed with the model's caption and a link to the s
 
 `packages/server` is a small Hono service (Postgres for runs and PNGs) that hosts reports, resolves
 baselines by branch, and runs the judge with your `ANTHROPIC_API_KEY`. Deploy it to Railway with
-`railway.json`. One shared bearer token per repo in v1.
+`.railway/railway.ts`. One shared bearer token per repo in v1.
 
 ## Limitations
 

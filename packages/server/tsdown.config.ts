@@ -1,7 +1,9 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-  entry: { main: 'src/main.ts' },
+  // `judge` is a second entry, not a second build: scripts/judge-eval.ts scores the real judge
+  // against the example runs, and importing the built module is what keeps the eval honest.
+  entry: { main: 'src/main.ts', judge: 'src/judge.ts' },
   format: 'esm',
   platform: 'node',
   clean: true,

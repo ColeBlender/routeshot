@@ -36,33 +36,29 @@ migration step for v1.
 
 ## Deploying to Railway
 
-The repo is a pnpm shared monorepo, so the service's **root directory stays `/`** (the repo root)
-and the workspace filter picks the package. In service settings:
+The whole project is declared in [`.railway/railway.ts`](../../.railway/railway.ts) at the repo
+root: this service plus its Postgres, wired together. Railway deprecated Config as Code
+(`railway.json` / `railway.toml`) in favour of Infrastructure as Code, new services cannot opt
+into it, and existing files stop being read on **2026-12-01**, so `packages/server/railway.json`
+is gone and that file is the only deploy config.
 
-- Root Directory: `/`
-- Config File: `/packages/server/railway.json` (the Railway config file path is absolute and does
-  not follow the root directory setting)
-- Attach a Railway Postgres service so `DATABASE_URL` is injected
-- Set `ROUTESHOT_TOKEN` and `ANTHROPIC_API_KEY`
+```bash
+railway link                    # pick the project and environment once
+railway config plan             # preview, applies nothing
+railway config apply            # same plan, then applies after confirmation
+```
 
-`railway.json` pins the Railpack builder, the workspace-filtered build and start commands, the
-watch patterns that keep CLI-only commits from redeploying the server, and `healthcheckPath`.
+Needs Railway CLI >= 5.42.1 (the IaC engine ships in the CLI, not in the `railway` npm package).
 
-> Railway deprecated Config as Code (`railway.json` / `railway.toml`) in favour of Infrastructure
-> as Code (`.railway/railway.ts`). Existing files keep working until **2026-12-01**, and new
-> services cannot opt into Config as Code, so a service created from scratch needs the IaC file at
-> the repo root instead. The equivalent is:
->
-> ```ts
-> import { defineRailway, project, service } from 'railway/iac';
->
-> export default defineRailway(() => {
->   const server = service('routeshot-server', {
->     build: 'pnpm install --frozen-lockfile && pnpm --filter @routeshot/server build',
->     start: 'pnpm --filter @routeshot/server start',
->   });
->   return project('routeshot', { resources: [server] });
-> });
-> ```
->
-> That file is project-level, so it belongs at the repo root, not in this package.
+The repo is a pnpm shared monorepo, so the service's root directory stays the repo root and the
+workspace filter picks the package: build `pnpm install --frozen-lockfile && pnpm --filter
+@routeshot/server build`, start `node packages/server/dist/main.mjs`, healthcheck `/health`, and
+watch patterns that keep CLI-only commits from redeploying the server.
+
+`DATABASE_URL` is a reference to the Postgres resource and the judge knobs are literals in the
+file. `ROUTESHOT_TOKEN` and `ANTHROPIC_API_KEY` are `preserve()`, meaning the file never carries
+their values, so set them once before the first deploy:
+
+```bash
+railway variables --set ROUTESHOT_TOKEN=... --set ANTHROPIC_API_KEY=...
+```
