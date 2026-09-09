@@ -90,3 +90,27 @@ before after` failed because refs did not resolve by label; the c12 MODULE_TYPEL
   five ratios as the README (10.65 / 2.06 / 2.33 / 1.17 / 4.27). Hosted path from the same clone:
   upload x2 + `compare --remote` gave five red verdicts, all correct.
 - Still Cole's: decide NOTES.md's fate and the v1 tag before going public.
+
+## Pivot: judge reads the code, no before image (2026-09-09 16:00 PT)
+
+- Cole's call: the judge must not depend on a human-approved baseline. It now gets one
+  screenshot plus the source behind it (route file, `_layout` chain, imports, 60 KB cap) and
+  answers "does this look broken?". Classes gained `wrapped`, `missing`, `other`.
+- `capture --changed-since <ref>`: static import graph (`affected.ts`) intersected with
+  `git diff` against the merge base; global files (app.json, package.json, babel/metro config)
+  select every screen. `capture --judge` / `routeshot judge` run the model locally from
+  `ANTHROPIC_API_KEY` (`.env.local` is read) and exit 1 on red. Every captured screen stores
+  `<slug>.code.txt`; `upload` sends it and the server judges with it.
+- Measured (`pnpm judge:eval`, twice over baseline/benign/broken): 42/42 levels, 42/42 labels,
+  0 unverified. Fine screens 0-5, broken 92-97. Caveat in the README: the example's defects are
+  behind a visible `isBroken` flag, so the model can read the intent.
+- Judge fixes found by running it: full-size 1206x2622 screenshots produced hallucinated
+  "duplicated content" reds on two clean screens (halved now, `downscaleForJudge`); Sonnet 5
+  rejects `temperature`; the SDK's `messages.parse` threw on a truncated answer and skipped the
+  retry, so JSON is requested via `output_config` on `create` and parsed locally, one retry.
+- Without the code bundle the hosted judge missed the off-screen Billing button (pixels only);
+  with it, 5/5 red. That is the before-image argument settled by measurement.
+- Dogfood on hosted macOS: the example builds (33 min, expensive: macOS minutes are 10x) but
+  `expo run:ios` timed out on its post-build launcher open. ci.yml now checks the install instead.
+  Pixel parity on hosted runners is still unmeasured; re-run only when the minutes are worth it.
+- `pnpm check` now builds before testing: the CLI tests run dist/cli.js.
