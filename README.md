@@ -12,17 +12,29 @@ That is a real run on the app in `example/`: baseline on the left, changed pixel
 the broken build on the right. `compare` reported it as 10.65% changed; the model called it
 `clipped`.
 
-## Quickstart (macOS, Xcode, an iOS simulator)
+## Quickstart
+
+You need macOS with Xcode and an iOS simulator runtime, CocoaPods, Node 22+, and pnpm 10
+(`corepack enable` or `npm i -g pnpm`).
 
 ```sh
 git clone https://github.com/ColeBlender/routeshot && cd routeshot
-pnpm install && pnpm build
-cd example && npx expo run:ios        # builds the example app and starts Metro
+pnpm install
+cd example && npx expo run:ios        # builds the example app (a few minutes) and starts Metro
+```
+
+Leave that terminal on Metro and open a second one in `example/`:
+
+```sh
 pnpm exec routeshot capture --label before
-# change a screen (or restart Metro with EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken)
+# stop Metro and restart it with a broken screen: EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start
 pnpm exec routeshot capture --label after
 pnpm exec routeshot compare before after --open
 ```
+
+Each capture takes about 20 seconds for the example's 7 routes. `compare` writes
+`.routeshot/compare/<before>__<after>/report.html`, prints the changed routes with their pixel
+ratios, and exits 1 because five screens changed.
 
 Point it at your own app instead: run the same `capture` from your project directory. Scheme and
 bundle id come from `app.json`; a development build is detected from `expo-dev-client` in your
