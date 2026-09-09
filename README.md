@@ -1,68 +1,55 @@
 # routeshot
 
-Screenshot every expo-router screen a change touched, and ask Claude, with the screen's code in
-hand, whether it looks broken. Red fails the build.
+Catches broken screens in your Expo app before you ship them.
 
-![Home screen before, diff mask, and after: the title got clipped mid-word](docs/hero-home.png)
+Add one line to your test script. Every time it runs, routeshot uses Claude (bring your own
+Anthropic API key) to:
 
-A real run on the app in `example/`. The judge read the screen's code next to the screenshot on
-the right, scored it 97 and called it `clipped`: "Title 'Routeshot Example Application' is
-clipped both vertically and mid-word due to fixed-height overflow box." Five defects like it,
-caught in one hosted report: https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
+1. Figure out which screens your change touched. ([how](docs/details.md#how-it-works))
+2. Open each of those screens on the iOS Simulator and screenshot it.
+3. Read the screenshot next to the code that drew it, and check that everything the code says
+   should be on screen is there, not cut off, not pushed off the edge, not drawn on top of
+   something else. ([what it catches](docs/details.md#what-the-numbers-look-like))
 
-## What it does
+A broken screen fails the test, the same way a failing unit test does. No screenshots to approve,
+nothing to maintain.
 
-- Reads your git diff and works out which screens that change can reach (route file, layouts, imports).
-- Opens each one on the iOS Simulator, waits for it to settle, screenshots it.
-- Hands the screenshot and the code that rendered it to Claude with one question: does this look broken?
-- No golden images, no baseline anyone had to approve. `capture` exits 1 when a screen is red.
+## See it work
 
-## Try it
-
-You need macOS with Xcode and an iOS simulator runtime, CocoaPods, Node 22+, pnpm 10
-(`corepack enable`), and an Anthropic API key.
+This repo includes a small example app with a switch that breaks five of its screens on purpose.
+You need a Mac with Xcode, Node 22+, pnpm (`corepack enable`), and an Anthropic API key.
 
 ```sh
 git clone https://github.com/ColeBlender/routeshot && cd routeshot
 pnpm install
 cd example && echo "ANTHROPIC_API_KEY=sk-ant-..." > .env.local
-npx expo run:ios                      # builds the example app and starts Metro
+npx expo run:ios
 ```
 
-Leave that terminal on Metro and open a second one in `example/`:
+That builds the example app and leaves Metro running. In a second terminal, in `example/`:
 
 ```sh
-pnpm exec routeshot capture --judge                     # 7 screens, all green, exit 0
+pnpm exec routeshot capture --judge            # 7 screens, all green
 ```
 
-Stop Metro, restart it with the broken screens, capture again:
+Now flip the switch. Stop Metro in the first terminal and restart it with the broken screens,
+then capture again:
 
 ```sh
-EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start    # first terminal
-pnpm exec routeshot capture --judge --open              # second terminal: 5 red, exit 1, report opens
+EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start     # first terminal
+pnpm exec routeshot capture --judge --open               # second terminal: 5 red, report opens
 ```
 
-Change one file and capture only what it touches:
+Here is that report, hosted: https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
 
-```sh
-echo "// touched" >> app/about.tsx
-pnpm exec routeshot capture --changed-since HEAD --judge   # "1 of 7 screens affected: /about"
-```
-
-## In your own app
+## Use it in your app
 
 ```json
 "test": "vitest run && routeshot capture --changed-since origin/main --judge"
 ```
 
-Scheme and bundle id come from `app.json`. `ANTHROPIC_API_KEY` is read from `.env.local`, `.env`,
-or the shell. Dynamic routes need params in `routeshot.config.ts`; the snippet to paste is printed
-when one is missing. Not on npm yet: clone and `pnpm link` until the public release.
-
-## More
-
-[docs/details.md](docs/details.md): how it works, the measured numbers, the EAS update mode, the
-GitHub Action, the report server, limitations, and how this was built with Claude Code.
+Not on npm yet: clone this repo and `pnpm link` the package until the public release. Details,
+options, the GitHub Action, and the honest list of limitations: [docs/details.md](docs/details.md).
 
 ## License
 

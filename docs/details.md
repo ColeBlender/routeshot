@@ -4,6 +4,13 @@ Everything the [README](../README.md) leaves out: how it works, what was measure
 
 ## How it works
 
+![Home screen before, diff mask, and after: the title got clipped mid-word](hero-home.png)
+
+The judge, reading `app/(tabs)/index.tsx` next to the screenshot on the right, scored it 97 and
+called it `clipped`: "Title 'Routeshot Example Application' is clipped both vertically and mid-word
+due to fixed-height overflow box." The pixel diff in the middle is what `compare` produces; the
+verdict does not depend on it.
+
 ```mermaid
 flowchart LR
   A[git diff since ref] --> B[import graph from every route]
