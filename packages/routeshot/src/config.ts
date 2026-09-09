@@ -1,5 +1,6 @@
 import { getConfig } from '@expo/config';
 import { loadConfig } from 'c12';
+import { createJiti } from 'jiti';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -97,7 +98,18 @@ export function defineConfig(config: RouteshotUserConfig): RouteshotUserConfig {
 }
 
 export async function loadRouteshotConfigAsync(cwd: string): Promise<RouteshotConfig> {
-  const loaded = await loadConfig<RouteshotUserConfig>({ name: 'routeshot', cwd });
+  // c12 tries Node's native import() first, and a `.ts` config in an app without `"type": "module"`
+  // (every Expo app) makes Node print MODULE_TYPELESS_PACKAGE_JSON on each run. Going through
+  // jiti directly skips that path, and also works on Node 22 releases without type stripping.
+  const jiti = createJiti(join(cwd, 'routeshot.config'), {
+    interopDefault: true,
+    moduleCache: false,
+  });
+  const loaded = await loadConfig<RouteshotUserConfig>({
+    name: 'routeshot',
+    cwd,
+    import: (id) => jiti.import(id),
+  });
 
   const parsed = ConfigSchema.safeParse(loaded.config ?? {});
   if (!parsed.success) {

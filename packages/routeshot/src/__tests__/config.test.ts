@@ -185,3 +185,31 @@ describe('defineConfig', () => {
     expect(defineConfig(config)).toBe(config);
   });
 });
+
+describe('routeshot.config.ts', () => {
+  it('loads a TypeScript config from an app without "type": "module" and emits no Node warning', async () => {
+    const projectRoot = await makeProjectAsync({
+      'package.json': { name: 'demo', version: '1.0.0' },
+      'app.json': APP_JSON,
+    });
+    await fs.writeFile(
+      path.join(projectRoot, 'routeshot.config.ts'),
+      `const threshold: number = 0.25;\nexport default { threshold, routes: { params: { '/items/[id]': { id: '7' } } } };\n`
+    );
+    const warnings: string[] = [];
+    const onWarning = (warning: Error & { code?: string }): void => {
+      warnings.push(warning.code ?? warning.name);
+    };
+    process.on('warning', onWarning);
+    try {
+      const config = await loadRouteshotConfigAsync(projectRoot);
+      // Node emits warnings on a later tick; give them a chance to land before asserting.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(config.threshold).toBe(0.25);
+      expect(config.routes.params['/items/[id]']).toEqual({ id: '7' });
+      expect(warnings).not.toContain('MODULE_TYPELESS_PACKAGE_JSON');
+    } finally {
+      process.off('warning', onWarning);
+    }
+  });
+});
