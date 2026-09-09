@@ -22,7 +22,8 @@ jobs:
       - run: pnpm test -- --coverage
       - run: pnpm build
       - run: pnpm --filter routeshot exec publint
-      - run: pnpm --filter routeshot exec attw --pack .
+      # ESM-only package: node10 and CommonJS resolution are out of scope by design.
+      - run: pnpm --filter routeshot exec attw --pack . --profile esm-only
 
   dogfood:
     # Runs routeshot on its own example app. Manual until the simulator job is proven stable on hosted runners.
