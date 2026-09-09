@@ -76,7 +76,7 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 - Live smoke: upload x2 + compare --remote -> hosted report with real verdicts (About: red 97 error).
 - Judge eval with the live key: 14/14 levels, 13/14 labels (Billing off-screen button read as `blank`).
 - EAS update mode proven: `--update-url https://u.expo.dev/update/<updateId>` (or the group URL) on the dev client, no override, same ratios as Metro.
-- The Railway MCP's list_variables echoed ANTHROPIC_API_KEY into an agent transcript on this machine. Rotate the key (30-day key anyway).
+- Avoid the Railway MCP's list_variables on this project: it returns secret values in plaintext into the transcript.
 
 ## Clean-room pass (2026-09-09 15:00 PT)
 
@@ -89,4 +89,4 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 - Final run on the pushed main: install only, 7/7 captured in 17s, compare by label reports the same
   five ratios as the README (10.65 / 2.06 / 2.33 / 1.17 / 4.27). Hosted path from the same clone:
   upload x2 + `compare --remote` gave five red verdicts, all correct.
-- Still Cole's: rotate the Anthropic key, decide NOTES.md's fate and the v1 tag before going public.
+- Still Cole's: decide NOTES.md's fate and the v1 tag before going public.
