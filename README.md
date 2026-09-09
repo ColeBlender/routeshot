@@ -6,7 +6,11 @@ Expo's OTA playbook says to install the update and eyeball it. This does the eye
 finds every screen from your `app/` directory, opens each one on the iOS Simulator, takes a
 picture, diffs it against the last run, and asks a model whether anything looks broken.
 
-<!-- hero: real before/after run on example/, added after the first captured run -->
+![Home screen before, diff mask, and after: the title got clipped mid-word](docs/hero-home.png)
+
+That is a real run on the app in `example/`: baseline on the left, changed pixels in the middle,
+the broken build on the right. `compare` reported it as 10.65% changed; the model called it
+`clipped`.
 
 ## Quickstart (macOS, Xcode, an iOS simulator)
 
@@ -76,7 +80,9 @@ baselines by branch, and runs the judge with your `ANTHROPIC_API_KEY`. Deploy it
 - iOS only. The `Simulator` interface is the seam for an `adb` adapter.
 - Dynamic routes (`[id]`) need params in `routeshot.config.ts`; without them the route is skipped loudly and the exact snippet to paste is printed.
 - Screens behind authentication capture whatever the app shows when opened cold.
+- Routes that exist only through `generateStaticParams` are not discovered; list them in `routes.params`.
 - Settle detection is a heuristic. Screens with permanent animation hit the 5 s cap and are reported as not settled.
+- Pixel noise was measured at zero on one machine. Baselines and candidates should still come from the same runner image; a hosted macOS runner has not been measured yet.
 - The judge's score is not calibrated probability. Thresholds were tuned on the example app's labeled screens only (`pnpm judge:eval`).
 - One device size, one appearance per run.
 
@@ -96,8 +102,11 @@ a public `getRoutes` entry that takes a filesystem context, and the simctl helpe
 ## How this was built
 
 Written with Claude Code over a few sessions. Claude drafted most of the code and tests against a
-spec I wrote; I reviewed every diff before it landed. One decision I made against its output:
-<!-- fill in the real one -->. The repo's own `AGENTS.md` is the map it worked from.
+spec I wrote; I reviewed every diff before it landed. One decision I made against its output: it
+set the diff threshold to 1% and called anything under that "simulator noise." I measured instead.
+Identical captures differ by zero pixels and the smallest real change moves 0.30%, so 1% would
+have reported every benign edit as unchanged. The default is 0.1%, and the numbers above are in
+the repo so you can check them. The repo's own `AGENTS.md` is the map it worked from.
 
 ## License
 
