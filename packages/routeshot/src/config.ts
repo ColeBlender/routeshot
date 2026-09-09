@@ -12,8 +12,13 @@ import { RouteshotError } from './errors.js';
  * `scheme` and `bundleId`, and both are read out of the Expo app config when omitted.
  */
 
-/** Anything under 1% of pixels is simulator rendering noise on a real device screenshot. */
-export const DEFAULT_THRESHOLD = 0.01;
+/**
+ * 0.1% of pixels. Measured on the example app (iPhone 17 Pro, iOS 26.5): identical reruns differ
+ * by exactly 0 pixels, the smallest intentional change (a subtitle copy edit) moves 0.30%, and
+ * the smallest deliberate defect moves 1.17%. The default sits well under the real changes and
+ * leaves room for a runner that is not pixel-identical to the baseline machine.
+ */
+export const DEFAULT_THRESHOLD = 0.001;
 
 /** Where `npx expo start` listens unless told otherwise. */
 export const DEFAULT_DEV_SERVER_URL = 'http://localhost:8081';

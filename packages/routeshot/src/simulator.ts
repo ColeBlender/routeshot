@@ -213,18 +213,24 @@ export class SimctlSimulator implements Simulator {
     await delayAsync(SPRINGBOARD_RESTART_MS);
   }
 
-  async dismissDevMenuOnboardingAsync(udid: string, bundleId: string): Promise<void> {
-    await xcrunAsync([
-      'simctl',
-      'spawn',
-      udid,
-      'defaults',
-      'write',
-      bundleId,
-      'EXDevMenuIsOnboardingFinished',
-      '-bool',
-      'YES',
-    ]);
+  async configureDevMenuAsync(udid: string, bundleId: string): Promise<void> {
+    // expo-dev-menu keeps its preferences in the app's own defaults domain (DevMenuPreferences.swift).
+    for (const [key, value] of [
+      ['EXDevMenuIsOnboardingFinished', 'YES'],
+      ['EXDevMenuShowFloatingActionButton', 'NO'],
+    ] as const) {
+      await xcrunAsync([
+        'simctl',
+        'spawn',
+        udid,
+        'defaults',
+        'write',
+        bundleId,
+        key,
+        '-bool',
+        value,
+      ]);
+    }
   }
 
   async overrideStatusBarAsync(udid: string): Promise<void> {

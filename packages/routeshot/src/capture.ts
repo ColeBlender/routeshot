@@ -203,7 +203,7 @@ async function bootDevClientAsync(
     );
   }
   Log.gray(`loading ${bundleUrl} in the development build`);
-  await sim.dismissDevMenuOnboardingAsync(udid, config.bundleId);
+  await sim.configureDevMenuAsync(udid, config.bundleId);
   await sim.terminateAsync(udid, config.bundleId);
   await sim.openUrlAsync(
     udid,

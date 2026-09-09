@@ -120,8 +120,8 @@ export class FakeSimulator implements Simulator {
     this.#record('approveUrlSchemeAsync', udid, scheme, bundleId);
   }
 
-  async dismissDevMenuOnboardingAsync(udid: string, bundleId: string): Promise<void> {
-    this.#record('dismissDevMenuOnboardingAsync', udid, bundleId);
+  async configureDevMenuAsync(udid: string, bundleId: string): Promise<void> {
+    this.#record('configureDevMenuAsync', udid, bundleId);
   }
 
   async openUrlAsync(udid: string, url: string): Promise<void> {

@@ -11,5 +11,4 @@ export default defineConfig({
     // Every screen here is static, so nothing needs an extra settle wait yet.
     waitFor: {},
   },
-  threshold: 0.01,
 });

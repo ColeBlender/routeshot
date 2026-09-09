@@ -54,8 +54,11 @@ export interface Simulator {
    * that would otherwise be the content of every screenshot.
    */
   approveUrlSchemeAsync(udid: string, scheme: string, bundleId: string): Promise<void>;
-  /** Marks expo-dev-menu's first-launch onboarding as seen so it never covers a screen. */
-  dismissDevMenuOnboardingAsync(udid: string, bundleId: string): Promise<void>;
+  /**
+   * Quiets expo-dev-menu for `bundleId`: marks its first-launch onboarding as seen and hides the
+   * floating gear button, so neither ends up in a screenshot.
+   */
+  configureDevMenuAsync(udid: string, bundleId: string): Promise<void>;
 }
 
 export type CaptureStatus = 'captured' | 'skipped' | 'failed';
