@@ -4,8 +4,8 @@
     "noEmit": true,
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "types": [],
+    "types": ["node"],
     "jsx": "react-jsx"
   },
-  "include": ["src/expo.ts"]
+  "include": ["src/expo.ts", "src/__tests__/expo.test.ts"]
 }
