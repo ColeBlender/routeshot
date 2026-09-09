@@ -19,6 +19,7 @@ const deviceSchema = z.object({
 const entrySchema = z.object({
   route: z.string().min(1),
   file: z.string().optional(),
+  code: z.string().optional(),
   status: z.enum(['captured', 'skipped', 'failed']),
   reason: z.string().optional(),
   settledMs: z.number().optional(),
@@ -33,6 +34,15 @@ const runSchema = z.object({
   app: z.object({ bundleId: z.string(), scheme: z.string() }),
   updateUrl: z.string().optional(),
   git: z.object({ sha: z.string().optional(), branch: z.string().optional() }),
+  affected: z
+    .object({
+      since: z.string(),
+      changedFiles: z.array(z.string()),
+      all: z.string().optional(),
+      because: z.record(z.string(), z.array(z.string())),
+      ignored: z.array(z.string()),
+    })
+    .optional(),
   routes: z.array(entrySchema),
 });
 
@@ -55,9 +65,19 @@ export function parseCaptureRun(value: unknown): CaptureRun {
     app: run.app,
     updateUrl: run.updateUrl,
     git: { sha: run.git.sha, branch: run.git.branch },
+    affected: run.affected
+      ? {
+          since: run.affected.since,
+          changedFiles: run.affected.changedFiles,
+          all: run.affected.all,
+          because: run.affected.because,
+          ignored: run.affected.ignored,
+        }
+      : undefined,
     routes: run.routes.map((entry) => ({
       route: entry.route,
       file: entry.file,
+      code: entry.code,
       status: entry.status,
       reason: entry.reason,
       settledMs: entry.settledMs,
@@ -65,12 +85,3 @@ export function parseCaptureRun(value: unknown): CaptureRun {
     })),
   };
 }
-
-export const judgeOutputSchema = z.object({
-  score: z.number().min(0).max(100),
-  defect: z.enum(['clipped', 'overlap', 'offscreen', 'blank', 'error', 'none']),
-  region: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).nullish(),
-  caption: z.string(),
-});
-
-export type JudgeOutput = z.infer<typeof judgeOutputSchema>;

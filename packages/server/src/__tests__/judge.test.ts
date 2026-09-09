@@ -20,10 +20,8 @@ const thresholds = { yellow: 40, red: 75 };
 function input(route = '/settings/billing'): JudgeInput {
   return {
     route,
-    before: makePng(4, 4, [0, 0, 0]),
-    after: makePng(4, 4, [255, 255, 255]),
-    diff: makePng(4, 4, [255, 0, 0]),
-    diffRatio: 0.0234,
+    screenshot: makePng(4, 4, [255, 255, 255]),
+    code: '// app/(tabs)/settings/billing.tsx\nexport default function Billing() { return <Button label="Update payment method" />; }\n',
   };
 }
 
@@ -58,27 +56,43 @@ describe('levelForScore', () => {
 });
 
 describe('buildJudgeRequest', () => {
-  it('sends the system prompt, the route, the change size and three PNG images in order', () => {
+  it('sends the system prompt, the route, the source, and exactly one PNG', () => {
     const request = buildJudgeRequest(input(), 'claude-sonnet-5');
 
     expect(request.model).toBe('claude-sonnet-5');
     expect(request.system).toBe(JUDGE_SYSTEM_PROMPT);
     expect(request.maxTokens).toBeLessThanOrEqual(300);
-    expect(request.content.map((block) => block.type)).toEqual([
-      'text',
-      'image',
-      'text',
-      'image',
-      'text',
-      'image',
-    ]);
+    expect(request.content.map((block) => block.type)).toEqual(['text', 'image']);
     const first = request.content[0];
-    expect(first).toMatchObject({ type: 'text' });
-    expect(first?.type === 'text' ? first.text : '').toContain('/settings/billing');
-    expect(first?.type === 'text' ? first.text : '').toContain('2.34% of pixels changed');
-    for (const block of request.content.filter((item) => item.type === 'image')) {
-      expect(block.source.media_type).toBe('image/png');
-      expect(block.source.data.length).toBeGreaterThan(0);
+    const text = first?.type === 'text' ? first.text : '';
+    expect(text).toContain('Route: /settings/billing');
+    expect(text).toContain('SOURCE, the code that rendered this screen');
+    expect(text).toContain('Update payment method');
+    const image = request.content[1];
+    expect(image?.type === 'image' ? image.source.media_type : '').toBe('image/png');
+    expect(image?.type === 'image' ? image.source.data.length : 0).toBeGreaterThan(0);
+  });
+
+  it('says so when no source was captured instead of inventing one', () => {
+    const request = buildJudgeRequest({ ...input(), code: undefined }, 'claude-sonnet-5');
+    const first = request.content[0];
+    expect(first?.type === 'text' ? first.text : '').toContain('No source code was captured');
+  });
+
+  it('asks about the screen on its own, never about a before image', () => {
+    expect(JUDGE_SYSTEM_PROMPT).not.toMatch(/BEFORE|DIFF MASK/);
+    expect(JUDGE_SYSTEM_PROMPT).toContain('cannot be explained by a state the code allows');
+    for (const defect of [
+      'clipped',
+      'overlap',
+      'offscreen',
+      'wrapped',
+      'missing',
+      'blank',
+      'error',
+      'other',
+    ]) {
+      expect(JUDGE_SYSTEM_PROMPT).toContain(`- ${defect}:`);
     }
   });
 });

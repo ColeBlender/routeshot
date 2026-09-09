@@ -19,6 +19,8 @@ export interface CaptureEntry {
   route: string;
   /** File name inside the run directory, e.g. `settings__billing.png`. Absent when not captured. */
   file: string | undefined;
+  /** File name of the source bundle the judge reads next to the screenshot (`<slug>.code.txt`). */
+  code: string | undefined;
   status: CaptureStatus;
   /** Why it was skipped or failed. */
   reason: string | undefined;
@@ -37,6 +39,16 @@ export interface CaptureRun {
   /** Present when the run was pointed at a specific EAS update group. */
   updateUrl: string | undefined;
   git: { sha: string | undefined; branch: string | undefined };
+  /** Present when `--changed-since` narrowed the run to the screens a code change touched. */
+  affected:
+    | {
+        since: string;
+        changedFiles: string[];
+        all: string | undefined;
+        because: Record<string, string[]>;
+        ignored: string[];
+      }
+    | undefined;
   routes: CaptureEntry[];
 }
 
@@ -55,7 +67,16 @@ export interface RouteDiff {
 
 export type VerdictLevel = 'green' | 'yellow' | 'red' | 'unverified';
 
-export type DefectClass = 'clipped' | 'overlap' | 'offscreen' | 'blank' | 'error' | 'none';
+export type DefectClass =
+  | 'clipped'
+  | 'overlap'
+  | 'offscreen'
+  | 'wrapped'
+  | 'missing'
+  | 'blank'
+  | 'error'
+  | 'other'
+  | 'none';
 
 export interface Verdict {
   route: string;

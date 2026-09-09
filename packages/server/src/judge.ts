@@ -1,36 +1,66 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { z } from 'zod';
 
-import { judgeOutputSchema, type JudgeOutput } from './schemas.js';
 import type { DefectClass, Verdict, VerdictLevel } from './types.js';
 
-export const JUDGE_SYSTEM_PROMPT = `You are reviewing a mobile app screen after a code change.
+/**
+ * The judge: one screenshot, the code that rendered it, one question. "Does this screen look
+ * broken?" It is deliberately not "what changed": nobody signed off on the previous screenshot
+ * either, so a baseline proves nothing. The code says what should be on screen; the screenshot
+ * shows what is. The model reads both.
+ */
+export const JUDGE_SYSTEM_PROMPT = `You are checking one screen of a mobile app for visual defects.
 
-You are given three images of one screen: the BEFORE screenshot, the AFTER screenshot, and a DIFF MASK marking the pixels that changed.
+You get the screenshot of the screen as it rendered on an iOS simulator, and the source code that renders it: the route file, the layout files above it, and the components they import. Read the code to work out what should be on screen, then check the screenshot against it.
 
-Decide whether the AFTER screenshot shows a UI defect or an intentional change.
+Report a defect only when the screenshot cannot be explained by a state the code allows. Loading, empty, signed-out, or permission-denied states the code renders on purpose are not defects. Copy, colors, spacing, and layout choices are not defects. You are not told what the screen used to look like, and it does not matter: judge what is in front of you.
 
 A defect is one of:
-- clipped: text or a control is cut off, truncated, or overflowing its container
+- clipped: text or a control is cut off, truncated, or overflows its container
 - overlap: elements are drawn on top of each other so something is unreadable
 - offscreen: a control or content is pushed outside the visible screen
-- blank: the screen is empty or is missing content it should be showing
+- wrapped: text in a button, tab, or label breaks onto a second line where the code clearly meant one
+- missing: something the code renders unconditionally is not visible
+- blank: the screen is empty or mostly empty where the code renders content
 - error: an error screen, a red error box, a stack trace, or a crash screen
-- none: the change looks intentional and the screen looks correct
+- other: something else that is clearly broken; say what in the caption
+- none: the screen looks correct
 
-Judge the AFTER screenshot on its own merits. Changed copy, colors, spacing, ordering, or data are not defects by themselves. Only report a defect you can actually see in the AFTER screenshot.
-
-score is your confidence that the AFTER screenshot is broken: 0 is certainly fine, 100 is certainly broken.
-region is the bounding box of the defect in the AFTER screenshot, normalized to 0..1 of width and height, or null when there is no defect.
-caption is at most 20 words describing what changed, written for a pull request comment.
+score is your confidence that the screen is broken: 0 is certainly fine, 100 is certainly broken.
+region is the bounding box of the defect in the screenshot, normalized to 0..1 of width and height, or null when there is no defect.
+caption is at most 20 words, written for a pull request comment: what is wrong, or when nothing is, what the screen shows.
 
 Respond ONLY with JSON in this shape, no prose:
-{"score": 0-100, "defect": "clipped|overlap|offscreen|blank|error|none", "region": {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1} | null, "caption": "<= 20 words, what changed"}`;
+{"score": 0-100, "defect": "clipped|overlap|offscreen|wrapped|missing|blank|error|other|none", "region": {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1} | null, "caption": "<= 20 words"}`;
 
 export const DEFAULT_JUDGE_MODEL = 'claude-sonnet-5';
 export const JUDGE_MAX_TOKENS = 300;
-export const JUDGE_TIMEOUT_MS = 30_000;
+export const JUDGE_TIMEOUT_MS = 60_000;
 export const JUDGE_CONCURRENCY = 4;
+/** score >= yellow is yellow, score >= red is red; measured on the example app's labeled screens. */
+export const DEFAULT_JUDGE_THRESHOLDS: JudgeThresholds = { yellow: 40, red: 75 };
+
+export const DEFECT_CLASSES = [
+  'clipped',
+  'overlap',
+  'offscreen',
+  'wrapped',
+  'missing',
+  'blank',
+  'error',
+  'other',
+  'none',
+] as const;
+
+export const judgeOutputSchema = z.object({
+  score: z.number().min(0).max(100),
+  defect: z.enum(DEFECT_CLASSES),
+  region: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).nullish(),
+  caption: z.string(),
+});
+
+export type JudgeOutput = z.infer<typeof judgeOutputSchema>;
 
 export interface JudgeThresholds {
   yellow: number;
@@ -82,10 +112,9 @@ export interface JudgeDeps {
 
 export interface JudgeInput {
   route: string;
-  before: Uint8Array;
-  after: Uint8Array;
-  diff: Uint8Array;
-  diffRatio: number;
+  screenshot: Uint8Array;
+  /** The source behind the screen (see `buildCodeContextAsync`). Undefined when none was captured. */
+  code: string | undefined;
 }
 
 function unverified(route: string, caption: string): Verdict {
@@ -111,18 +140,17 @@ export function levelForScore(
 }
 
 export function buildJudgeRequest(input: JudgeInput, model: string): JudgeRequest {
-  const percent = (input.diffRatio * 100).toFixed(2);
+  const source =
+    input.code === undefined
+      ? 'No source code was captured for this screen. Judge the screenshot on its own.'
+      : `SOURCE, the code that rendered this screen:\n\n${input.code}`;
   return {
     model,
     maxTokens: JUDGE_MAX_TOKENS,
     system: JUDGE_SYSTEM_PROMPT,
     content: [
-      { type: 'text', text: `Route: ${input.route}\n${percent}% of pixels changed.\n\nBEFORE:` },
-      { type: 'image', source: toImageSource(input.before) },
-      { type: 'text', text: 'AFTER:' },
-      { type: 'image', source: toImageSource(input.after) },
-      { type: 'text', text: 'DIFF MASK (changed pixels highlighted):' },
-      { type: 'image', source: toImageSource(input.diff) },
+      { type: 'text', text: `Route: ${input.route}\n\n${source}\n\nSCREENSHOT:` },
+      { type: 'image', source: toImageSource(input.screenshot) },
     ],
   };
 }
@@ -137,8 +165,8 @@ function toImageSource(png: Uint8Array): {
 
 /**
  * The one place in this package that swallows errors instead of throwing. A judge that cannot
- * answer must not fail the request that asked for a diff: an 'unverified' verdict is the honest
- * result and is never rendered as green.
+ * answer must not fail the run that asked: an 'unverified' verdict is the honest result and is
+ * never rendered as green.
  */
 export async function judgeRouteAsync(input: JudgeInput, deps: JudgeDeps): Promise<Verdict> {
   return (await judgeRouteResultAsync(input, deps)).verdict;
@@ -184,7 +212,6 @@ async function judgeRouteResultAsync(
       score: output.score,
       defect: output.defect,
       region: output.region ?? undefined,
-      // Sonnet occasionally closes the caption with a stray quote; it would land in a PR comment.
       // Models sometimes wrap the whole caption in quotes. Only a matching pair goes; a caption
       // that merely starts with a quoted word ('Saved' button ...) keeps it.
       caption: output.caption.trim().replace(/^(['"])(.*)\1$/s, '$2'),
@@ -225,7 +252,7 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
     const used = await deps.quota.countAsync(day);
     allowed = Math.max(0, Math.min(inputs.length, deps.quota.cap - used));
     if (allowed > 0) {
-      // Reserved before the calls go out so two concurrent compares cannot both spend the tail
+      // Reserved before the calls go out so two concurrent batches cannot both spend the tail
       // of the daily budget.
       await deps.quota.recordAsync(day, allowed);
     }

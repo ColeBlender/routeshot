@@ -39,10 +39,12 @@ export function makeRun(overrides: Partial<CaptureRun> = {}): CaptureRun {
     app: { bundleId: 'dev.routeshot.example', scheme: 'routeshot' },
     updateUrl: undefined,
     git: { sha: 'abc1234', branch: 'main' },
+    affected: undefined,
     routes: [
       {
         route: '/',
         file: 'index.png',
+        code: undefined,
         status: 'captured',
         reason: undefined,
         settledMs: 420,

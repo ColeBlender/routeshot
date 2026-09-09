@@ -14,6 +14,7 @@ function entry(route: string, file: string, overrides: Partial<CaptureEntry> = {
   return {
     route,
     file,
+    code: undefined,
     status: 'captured',
     reason: undefined,
     settledMs: 300,

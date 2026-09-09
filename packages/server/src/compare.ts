@@ -124,7 +124,15 @@ export async function compareRunsAsync(input: CompareInput): Promise<CompareResu
     });
 
     if (changed) {
-      judgeInputs.push({ route, before, after, diff: result.png, diffRatio: result.diffRatio });
+      const codeBytes =
+        candidateEntry?.code === undefined
+          ? undefined
+          : await input.files.getFileAsync(input.candidate.id, candidateEntry.code);
+      judgeInputs.push({
+        route,
+        screenshot: after,
+        code: codeBytes === undefined ? undefined : new TextDecoder().decode(codeBytes),
+      });
     } else {
       // Identical pixels cannot hide a defect the baseline did not already have, so this is a
       // green verdict with no AI call: the judge only ever sees screens that moved.
