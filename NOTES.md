@@ -4,7 +4,7 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 
 ## Blockers needing Cole (status 2026-09-09 13:30 PT)
 
-- [ ] `eas login` + `eas init` in example/ (real projectId for updates.url). Then `eas update --branch routeshot` twice and `routeshot capture --update-url <manifest>` on the dev client proves EAS update-group mode. The dev-client launcher loads a manifest URL directly, so no anti-bricking flag is needed on that path; the `routeshot/expo` hook + runner profile stay for release runner builds and are unit-tested only.
+- [x] DONE 2026-09-09: EAS update-group mode proven end to end (see the spike section below). The dev-client launcher loads a manifest URL directly, so no anti-bricking flag is needed on that path; the `routeshot/expo` hook + runner profile stay for release runner builds and are unit-tested only.
 - [ ] Railway: `railway link` a new project, then `railway config apply` (needs CLI >= 5.42.1; installed 5.26.1) reads `.railway/railway.ts`. Set ROUTESHOT_TOKEN and ANTHROPIC_API_KEY with `railway variables --set` before the first deploy.
 - [ ] `ANTHROPIC_API_KEY`: in `packages/server/.env` locally, then `pnpm judge:eval` scores the thresholds against the labeled example screens and the numbers go in the README. Nothing has been judged by the model yet; every verdict so far is `unverified` by design.
 - [ ] Decide when the repo goes public and gets the `v1` tag (README references `@main` until then).
@@ -36,3 +36,35 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 - Verdict: hire signal. Blocking: Actions template injection in action.yml (inputs interpolated into run: and the github-script body), /compare returning a dead link on a race (ON CONFLICT DO NOTHING). Both fixed.
 - Should-fix done: fail-on-change input, judge structured-output latch scoped, Postgres service container in CI so the real store is tested, upload id-probe sends the token, action SHAs pinned, MemoryStore dev path, stale docs.
 - Left as nits on purpose: two HTML renderers (CLI and server) share no code by design (the package must not depend on the server); routeSlug collision between `/a/b` and a literal `/a__b` route is theoretical.
+
+## EAS update-group mode, proven end to end (2026-09-09, iPhone 17 Pro, iOS 26.5)
+
+- `eas update:configure` replaced the `updates.url` placeholder in `example/app.json` with
+  `https://u.expo.dev/268c423a-95a4-41de-86d2-aa2ea02ebdfe`. Runtime versions already matched:
+  the installed dev build's `Expo.plist` has `EXUpdatesRuntimeVersion 1.0.0` and the `appVersion`
+  policy publishes `1.0.0`. No rebuild was needed.
+- eas-cli 24 refuses `update --non-interactive` without `--environment`. Both publishes used
+  `--environment production`. Anything scripted (CI, the Action) has to pass it.
+- Two updates on branch `routeshot`, distinct bundles (`entry-59264ba1...hbc` vs `entry-e0fd3d94...hbc`):
+  baseline update `01a087f2-1091-7836-b999-e4a3257946cc` in group `b9ab34f5-5d8b-4a8a-89d5-588cac93ff20`,
+  broken update `01a087f2-71f7-7e27-856d-72df1eb59050` in group `5faff6dd-871c-4204-8fbc-49935c47f4d0`.
+- Both manifest URL forms load in the dev client through
+  `exp+routeshot-example://expo-development-client/?url=<encoded>`: the per-platform
+  `https://u.expo.dev/update/<updateId>` (what `eas update --json` calls `manifestPermalink`) and
+  the group `https://u.expo.dev/<projectId>/group/<groupId>`. Switching between them is not sticky;
+  each launcher open loads the URL it was given.
+- Anti-bricking was left ON and the installed build's baked-in `EXUpdatesURL` is still the
+  placeholder. Neither matters on the launcher path, which is the point.
+- `capture --update-url` on each, then `compare`: 5 changed, 2 unchanged. Home 10.65%,
+  Billing 4.27%, Explore 2.33%, About 2.06%, Item 1.17%, Modal and Settings exactly 0. Identical to
+  the Metro-driven spike numbers above, so the EAS path is pixel-equivalent to the Metro path.
+- The `routeshot/expo` hook did not run: `config.devClient` is auto-detected, so `captureAsync`
+  takes `bootDevClientAsync` and never sends the `routeshotexample://routeshot/update?url=` deep
+  link that `applyRouteshotUpdateOverrideAsync` parses. Still release-path-only and unit-tested only.
+- Determinism on the update path is as clean as on Metro: two separate captures of the same
+  published baseline, loaded fresh each time, came back 0 changed / 7 unchanged.
+- Bug found and fixed while proving this: `simctl io <udid> screenshot --type=png -` is not honoured
+  as stdout on this Xcode, so simctl wrote a 184 KB PNG literally named `-` into the project root on
+  every capture (the temp-file fallback in `screenshotAsync` is what actually returned the bytes, so
+  it was silent). `screenshotToStdoutAsync` now spawns with `cwd: os.tmpdir()`
+  (packages/routeshot/src/simulator.ts:344). Verified: a fresh capture leaves no `example/-`.

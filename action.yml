@@ -24,7 +24,7 @@ inputs:
     required: false
     default: ''
   update-url:
-    description: EAS update manifest URL to load before capturing.
+    description: 'EAS update manifest URL to load before capturing: either https://u.expo.dev/update/<updateId> (the manifestPermalink from `eas update --json`) or https://u.expo.dev/<projectId>/group/<groupId>.'
     required: false
     default: ''
   device:

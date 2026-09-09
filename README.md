@@ -81,14 +81,26 @@ A larger labeled set is the first thing to build before trusting them on a real 
 
 ## EAS update mode
 
-`routeshot capture --update-url https://u.expo.dev/<projectId>/group/<groupId>` loads a specific
-published update before capturing, so you can diff update N against update N-1 with no rebuild.
+`routeshot capture --update-url <manifest URL>` loads a specific published update before
+capturing, so you can diff update N against update N-1 with no rebuild. Two URL forms work, and
+both are what the EAS dashboard hands you:
 
-This needs a dedicated **runner build** that is never shipped to users: a development build whose
+- `https://u.expo.dev/update/<updateId>` is one platform's update. `eas update --json` prints it as
+  `manifestPermalink`, and it is the most precise thing to pass from CI.
+- `https://u.expo.dev/<projectId>/group/<groupId>` is the whole update group; the server picks the
+  platform from the request headers.
+
+**On a development build this needs nothing else.** `expo-dev-client`'s launcher takes a manifest
+URL exactly where it takes a Metro URL, so an ordinary `npx expo run:ios` build, with rollback
+protection left on, loads any published update for its runtime version. Verified end to end on
+iOS: two updates published to one branch, captured through `--update-url`, and the diffs matched
+the Metro-driven runs to the pixel.
+
+The **runner build** is only for the release path, where there is no launcher: a build whose
 `app.config` sets `updates.disableAntiBrickingMeasures: true` only when `EAS_BUILD_PROFILE` is
 `routeshot`, and whose root layout calls `useRouteshotUpdateOverride()` from `routeshot/expo`. The
-override is Expo's own `Updates.setUpdateURLAndRequestHeadersOverride`. See `example/` for the
-exact `eas.json` and `app.config.ts`.
+override is Expo's own `Updates.setUpdateURLAndRequestHeadersOverride`, and such a build is never
+shipped to users. See `example/` for the exact `eas.json` and `app.config.ts`.
 
 ## GitHub Action
 

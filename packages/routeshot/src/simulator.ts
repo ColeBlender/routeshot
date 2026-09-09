@@ -341,7 +341,13 @@ function compareRuntimes(a: string, b: string): number {
 /** Returns the PNG bytes, or undefined when stdout produced nothing usable. */
 async function screenshotToStdoutAsync(udid: string): Promise<Uint8Array | undefined> {
   const args = ['simctl', 'io', udid, 'screenshot', '--type=png', '-'];
-  const promise = spawnAsync('xcrun', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  // On the Xcode builds where `-` is not honoured as stdout, simctl takes it as a literal file
+  // name and drops a PNG called `-` in the working directory. Run from the temp dir so that
+  // litter never lands in the user's project; the fallback below is what actually returns bytes.
+  const promise = spawnAsync('xcrun', args, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: os.tmpdir(),
+  });
 
   // The result's `stdout` is utf8-decoded, which destroys PNG bytes, so read the raw stream.
   const chunks: Buffer[] = [];

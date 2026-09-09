@@ -27,7 +27,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "updates": {
-      "url": "https://u.expo.dev/00000000-0000-0000-0000-000000000000"
+      "url": "https://u.expo.dev/268c423a-95a4-41de-86d2-aa2ea02ebdfe"
     },
     "runtimeVersion": {
       "policy": "appVersion"
@@ -46,6 +46,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "268c423a-95a4-41de-86d2-aa2ea02ebdfe"
+      }
+    },
+    "owner": "coleblender"
   }
 }

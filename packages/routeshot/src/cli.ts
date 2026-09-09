@@ -35,7 +35,10 @@ program
   .description('Deep link every route on a simulator and write a run to .routeshot/runs')
   .option('--label <name>', 'name for this run (default: the current git branch)')
   .option('--device <name>', 'simulator name, e.g. "iPhone 17 Pro"')
-  .option('--update-url <url>', 'EAS update group manifest URL to load before capturing')
+  .option(
+    '--update-url <url>',
+    'EAS update manifest URL to load before capturing: https://u.expo.dev/update/<updateId> or https://u.expo.dev/<projectId>/group/<groupId>'
+  )
   .addOption(
     new Option('--appearance <mode>', 'color scheme to capture in').choices(['light', 'dark'])
   )
