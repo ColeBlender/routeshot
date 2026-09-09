@@ -28,6 +28,7 @@ function entry(route: string, overrides: Partial<CaptureEntry> = {}): CaptureEnt
   return {
     route,
     file: `${route.replace(/^\//, '').replace(/\//g, '__') || 'index'}.png`,
+    code: undefined,
     status: 'captured',
     reason: undefined,
     settledMs: 120,
@@ -52,6 +53,7 @@ async function makeRunAsync(
     app: { bundleId: 'com.example.demo', scheme: 'demo' },
     updateUrl: undefined,
     git: { sha: undefined, branch: undefined },
+    affected: undefined,
     routes: entries,
   };
   await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(run, null, 2));

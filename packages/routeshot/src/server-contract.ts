@@ -12,8 +12,11 @@ export const DefectClassSchema = z.enum([
   'clipped',
   'overlap',
   'offscreen',
+  'wrapped',
+  'missing',
   'blank',
   'error',
+  'other',
   'none',
 ]);
 

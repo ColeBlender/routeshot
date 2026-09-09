@@ -31,6 +31,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.124.0",
     "@expo/config": "57.0.9",
     "@expo/osascript": "2.7.1",
     "@expo/spawn-async": "1.8.0",

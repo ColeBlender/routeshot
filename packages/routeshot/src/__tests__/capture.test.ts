@@ -63,11 +63,14 @@ const CONFIG: RouteshotConfig = {
   server: undefined,
 };
 
-function makeDeps(routes: Route[] = ROUTES): CaptureDeps {
+function makeDeps(routes: Route[] = ROUTES, overrides: Partial<CaptureDeps> = {}): CaptureDeps {
   return {
     discoverRoutesAsync: () => Promise.resolve(routes),
     pickDeviceAsync: () => Promise.resolve(DEVICE),
+    // No app directory in these temp projects; the source walk is exercised in affected.test.ts.
+    collectRouteSourcesAsync: () => Promise.resolve([]),
     now: () => new Date('2026-09-09T20:15:03.123Z'),
+    ...overrides,
   };
 }
 
@@ -127,6 +130,94 @@ describe('captureAsync', () => {
       await fs.readFile(path.join(dir, 'index.json'), 'utf8')
     ) as CaptureRun;
     expect(onDisk.routes).toEqual(run.routes.map((entry) => JSON.parse(JSON.stringify(entry))));
+  });
+
+  it('writes the code behind each captured screen next to its screenshot', async () => {
+    const projectRoot = await makeProjectRootAsync();
+    await fs.mkdir(path.join(projectRoot, 'app', 'settings'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectRoot, 'app', 'settings', 'billing.tsx'),
+      'export default 1;\n'
+    );
+    await fs.writeFile(path.join(projectRoot, 'app', '_layout.tsx'), 'export default 2;\n');
+    const sim = new FakeSimulator({ devices: [DEVICE] });
+    const billing = path.join(projectRoot, 'app', 'settings', 'billing.tsx');
+    const layout = path.join(projectRoot, 'app', '_layout.tsx');
+
+    const { run, dir } = await captureAsync(
+      { projectRoot, config: CONFIG, sim },
+      makeDeps(ROUTES, {
+        collectRouteSourcesAsync: () =>
+          Promise.resolve([
+            { route: '/settings/billing', files: [billing, layout], truncated: false },
+          ]),
+      })
+    );
+
+    const entry = run.routes.find((item) => item.route === '/settings/billing');
+    expect(entry?.code).toBe('settings__billing.code.txt');
+    expect(run.routes.find((item) => item.route === '/')?.code).toBeUndefined();
+    const code = await fs.readFile(path.join(dir, 'settings__billing.code.txt'), 'utf8');
+    expect(code).toBe(
+      '// app/settings/billing.tsx\nexport default 1;\n\n// app/_layout.tsx\nexport default 2;\n'
+    );
+  });
+
+  it('captures only the screens a change touched with --changed-since, and says why', async () => {
+    const projectRoot = await makeProjectRootAsync();
+    const sim = new FakeSimulator({ devices: [DEVICE] });
+    const button = path.join(projectRoot, 'components', 'Button.tsx');
+    const home = path.join(projectRoot, 'app', 'index.tsx');
+    const billing = path.join(projectRoot, 'app', 'settings', 'billing.tsx');
+
+    const { run } = await captureAsync(
+      { projectRoot, config: CONFIG, sim, changedSince: 'main' },
+      makeDeps(ROUTES, {
+        collectRouteSourcesAsync: () =>
+          Promise.resolve([
+            { route: '/', files: [home], truncated: false },
+            { route: '/settings/billing', files: [billing, button], truncated: false },
+            { route: '/users/[id]', files: [], truncated: false },
+          ]),
+        changedFilesSinceAsync: () =>
+          Promise.resolve({
+            base: 'abc',
+            files: [button, path.join(projectRoot, 'README.md')],
+          }),
+      })
+    );
+
+    expect(run.routes.map((entry) => entry.route)).toEqual(['/settings/billing']);
+    expect(run.affected).toEqual({
+      since: 'main',
+      changedFiles: ['components/Button.tsx', 'README.md'],
+      all: undefined,
+      because: { '/settings/billing': ['components/Button.tsx'] },
+      ignored: ['README.md'],
+    });
+    expect(sim.callsTo('openUrlAsync').map((call) => call.args[1])).toEqual([
+      'demo://settings/billing',
+    ]);
+  });
+
+  it('records an empty run and never touches the simulator when no screen is affected', async () => {
+    const projectRoot = await makeProjectRootAsync();
+    const sim = new FakeSimulator({ devices: [DEVICE] });
+
+    const { run, dir } = await captureAsync(
+      { projectRoot, config: CONFIG, sim, changedSince: 'main' },
+      makeDeps(ROUTES, {
+        collectRouteSourcesAsync: () => Promise.resolve([]),
+        changedFilesSinceAsync: () =>
+          Promise.resolve({ base: 'abc', files: [path.join(projectRoot, 'README.md')] }),
+      })
+    );
+
+    expect(run.routes).toEqual([]);
+    expect(run.affected?.ignored).toEqual(['README.md']);
+    expect(sim.callsTo('bootAsync')).toEqual([]);
+    expect(sim.callsTo('openUrlAsync')).toEqual([]);
+    await expect(fs.stat(path.join(dir, 'index.json'))).resolves.toBeTruthy();
   });
 
   it('percent-encodes param values in the deep link', async () => {

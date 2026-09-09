@@ -120,6 +120,9 @@ importers:
 
   packages/routeshot:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: 0.124.0
+        version: 0.124.0(zod@4.5.4)
       '@expo/config':
         specifier: 57.0.9
         version: 57.0.9(typescript@6.0.3)

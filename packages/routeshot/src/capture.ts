@@ -1,12 +1,19 @@
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { promisify } from 'node:util';
 
+import {
+  affectedRoutes,
+  buildCodeContextAsync,
+  changedFilesSinceAsync,
+  collectRouteSourcesAsync,
+  type RouteSources,
+} from './affected.js';
 import type { RouteshotConfig } from './config.js';
 import { RouteshotError } from './errors.js';
 import { Log } from './log.js';
-import { discoverRoutesAsync } from './routes.js';
+import { discoverRoutesAsync, resolveAppDirAsync } from './routes.js';
 import { waitForSettledFrameAsync } from './settle.js';
 import { pickDeviceAsync } from './simulator.js';
 import type { CaptureEntry, CaptureRun, Route, Simulator } from './types.js';
@@ -26,13 +33,39 @@ export interface CaptureOptions {
   updateUrl?: string;
   /** Overrides `config.appearance` for this run. */
   appearance?: 'light' | 'dark';
+  /**
+   * A git ref. Only routes whose source (route file, layouts, imports) changed against the merge
+   * base with it are captured; everything else is left out of the run entirely.
+   */
+  changedSince?: string;
 }
 
-/** Seams for tests. Production passes nothing and gets the real route/device lookups. */
+/** Seams for tests. Production passes nothing and gets the real route/device/git lookups. */
 export interface CaptureDeps {
   discoverRoutesAsync?: typeof discoverRoutesAsync;
   pickDeviceAsync?: typeof pickDeviceAsync;
+  collectRouteSourcesAsync?: (projectRoot: string, routes: Route[]) => Promise<RouteSources[]>;
+  changedFilesSinceAsync?: typeof changedFilesSinceAsync;
   now?: () => Date;
+}
+
+/**
+ * Source files behind each route. Not fatal when they cannot be found: the screenshot still
+ * gets taken, the judge just reads it without code.
+ */
+async function defaultCollectRouteSourcesAsync(
+  projectRoot: string,
+  routes: Route[]
+): Promise<RouteSources[]> {
+  try {
+    const appDir = await resolveAppDirAsync(projectRoot);
+    return await collectRouteSourcesAsync(routes, { projectRoot, appDir });
+  } catch (error) {
+    Log.warn(
+      `could not read route sources, the judge will see screenshots only: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return [];
+  }
 }
 
 /**
@@ -58,22 +91,60 @@ export async function captureAsync(
   const createdAt = (deps.now ?? (() => new Date()))();
   const appearance = options.appearance ?? config.appearance;
 
-  const routes = await discover(projectRoot, {
+  const allRoutes = await discover(projectRoot, {
     params: config.routes.params,
     ignore: config.routes.ignore,
   });
+  const sources = await (deps.collectRouteSourcesAsync ?? defaultCollectRouteSourcesAsync)(
+    projectRoot,
+    allRoutes
+  );
+  const sourcesByRoute = new Map(sources.map((source) => [source.route, source]));
+
+  let routes = allRoutes;
+  let affected: CaptureRun['affected'];
+  if (options.changedSince !== undefined) {
+    const changed = await (deps.changedFilesSinceAsync ?? changedFilesSinceAsync)(
+      projectRoot,
+      options.changedSince
+    );
+    const selection = affectedRoutes(sources, changed.files, projectRoot);
+    const selected = new Set(selection.routes.map((item) => item.route));
+    routes = allRoutes.filter((route) => selected.has(route.template ?? route.pathname));
+    affected = {
+      since: options.changedSince,
+      changedFiles: changed.files.map((file) => relative(projectRoot, file)),
+      all: selection.all,
+      because: Object.fromEntries(selection.routes.map((item) => [item.route, item.because])),
+      ignored: selection.ignored,
+    };
+    const count = `${affected.changedFiles.length} files changed since ${options.changedSince}`;
+    if (selection.all !== undefined) {
+      Log.log(`${count}; ${selection.all} affects every screen`);
+    } else {
+      Log.log(`${count}; ${routes.length} of ${allRoutes.length} screens affected`);
+      for (const item of selection.routes) {
+        Log.gray(`  ${item.route}  ${item.because.join(', ')}`);
+      }
+      if (selection.ignored.length > 0) {
+        Log.gray(`  not imported by any screen: ${selection.ignored.join(', ')}`);
+      }
+    }
+  }
 
   const device = await pickDevice(sim, config.device);
-  await sim.bootAsync(device.udid);
-  // Clock, carrier and battery are the three things that differ on every single screenshot.
-  await sim.overrideStatusBarAsync(device.udid);
-  await sim.setAppearanceAsync(device.udid, appearance);
-  await sim.approveUrlSchemeAsync(device.udid, config.scheme, config.bundleId);
+  if (routes.length > 0) {
+    await sim.bootAsync(device.udid);
+    // Clock, carrier and battery are the three things that differ on every single screenshot.
+    await sim.overrideStatusBarAsync(device.udid);
+    await sim.setAppearanceAsync(device.udid, appearance);
+    await sim.approveUrlSchemeAsync(device.udid, config.scheme, config.bundleId);
 
-  if (config.devClient) {
-    await bootDevClientAsync(sim, device.udid, config, options.updateUrl ?? config.devClient.url);
-  } else if (options.updateUrl) {
-    await applyUpdateOverrideAsync(sim, device.udid, config, options.updateUrl);
+    if (config.devClient) {
+      await bootDevClientAsync(sim, device.udid, config, options.updateUrl ?? config.devClient.url);
+    } else if (options.updateUrl) {
+      await applyUpdateOverrideAsync(sim, device.udid, config, options.updateUrl);
+    }
   }
 
   const [sha, branch] = await Promise.all([
@@ -100,7 +171,14 @@ export async function captureAsync(
   const entries: CaptureEntry[] = [];
   for (const [index, route] of routes.entries()) {
     const counter = `[${index + 1}/${routes.length}]`;
-    entries.push(await captureRouteAsync({ counter, route, dir, config, sim, udid: device.udid }));
+    const entry = await captureRouteAsync({ counter, route, dir, config, sim, udid: device.udid });
+    const source = sourcesByRoute.get(entry.route);
+    if (entry.status === 'captured' && source !== undefined) {
+      entry.code = `${routeSlug(entry.route)}.code.txt`;
+      const context = await buildCodeContextAsync(source, projectRoot);
+      await writeFile(join(dir, entry.code), context.text);
+    }
+    entries.push(entry);
   }
 
   const run: CaptureRun = {
@@ -111,13 +189,18 @@ export async function captureAsync(
     app: { bundleId: config.bundleId, scheme: config.scheme },
     updateUrl: options.updateUrl,
     git: { sha, branch },
+    affected,
     routes: entries,
   };
 
   await writeFile(join(dir, 'index.json'), `${JSON.stringify(run, null, 2)}\n`);
 
-  const captured = entries.filter((entry) => entry.status === 'captured').length;
-  Log.succeed(`${captured}/${entries.length} routes captured into ${dir}`);
+  if (routes.length === 0 && affected !== undefined) {
+    Log.succeed(`no screens affected, nothing to capture (empty run recorded in ${dir})`);
+  } else {
+    const captured = entries.filter((entry) => entry.status === 'captured').length;
+    Log.succeed(`${captured}/${entries.length} routes captured into ${dir}`);
+  }
 
   return { run, dir };
 }
@@ -142,6 +225,7 @@ async function captureRouteAsync(context: {
     return {
       route: key,
       file: undefined,
+      code: undefined,
       status: 'skipped',
       reason,
       settledMs: undefined,
@@ -164,6 +248,7 @@ async function captureRouteAsync(context: {
     return {
       route: key,
       file,
+      code: undefined,
       status: 'captured',
       reason: frame.settled ? undefined : 'screen never stopped changing',
       settledMs: frame.settled ? frame.elapsedMs : undefined,
@@ -175,6 +260,7 @@ async function captureRouteAsync(context: {
     return {
       route: key,
       file: undefined,
+      code: undefined,
       status: 'failed',
       reason,
       settledMs: undefined,

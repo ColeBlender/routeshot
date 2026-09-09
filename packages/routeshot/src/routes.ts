@@ -119,7 +119,7 @@ export async function discoverRoutesAsync(
  * expo-router looks for `src/app` before `app`, and an explicit root can come either from the
  * config plugin's `root` option or from `extra.router.root` once the plugin has run.
  */
-async function resolveAppDirAsync(projectRoot: string): Promise<string> {
+export async function resolveAppDirAsync(projectRoot: string): Promise<string> {
   const configured = readConfiguredRouterRoot(projectRoot);
   if (configured) {
     const absolute = path.isAbsolute(configured)

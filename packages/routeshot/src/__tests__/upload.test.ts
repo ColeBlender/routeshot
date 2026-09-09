@@ -22,10 +22,12 @@ const RUN: CaptureRun = {
   app: { bundleId: 'com.example.demo', scheme: 'demo' },
   updateUrl: undefined,
   git: { sha: 'abc1234', branch: 'main' },
+  affected: undefined,
   routes: [
     {
       route: '/',
       file: 'index.png',
+      code: undefined,
       status: 'captured',
       reason: undefined,
       settledMs: 400,
@@ -34,6 +36,7 @@ const RUN: CaptureRun = {
     {
       route: '/x',
       file: undefined,
+      code: undefined,
       status: 'skipped',
       reason: 'no params',
       settledMs: undefined,

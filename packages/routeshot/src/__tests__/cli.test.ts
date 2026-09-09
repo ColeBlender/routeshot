@@ -46,6 +46,7 @@ async function makeRunAsync(
   const entry: CaptureEntry = {
     route: '/settings',
     file: 'settings.png',
+    code: undefined,
     status: 'captured',
     reason: undefined,
     settledMs: 120,
@@ -59,6 +60,7 @@ async function makeRunAsync(
     app: { bundleId: 'com.example.demo', scheme: 'demo' },
     updateUrl: undefined,
     git: { sha: undefined, branch: undefined },
+    affected: undefined,
     routes: [entry],
   };
   await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(run, null, 2));

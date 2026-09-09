@@ -10,7 +10,9 @@ export type ErrorCode =
   | 'CAPTURE'
   | 'COMPARE'
   | 'UPLOAD'
-  | 'DIFF_FOUND';
+  | 'JUDGE'
+  | 'DIFF_FOUND'
+  | 'DEFECT_FOUND';
 
 export class RouteshotError extends Error {
   override readonly name = 'RouteshotError';

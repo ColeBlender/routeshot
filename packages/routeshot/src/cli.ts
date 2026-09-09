@@ -15,6 +15,7 @@ import {
 } from './config.js';
 import { diffRunsAsync } from './diff.js';
 import { isRouteshotError, RouteshotError } from './errors.js';
+import { judgeDepsFromEnv, judgeRunAsync, type JudgeRunResult } from './judge-run.js';
 import { enableJsonOutput, Log } from './log.js';
 import { writeReportAsync } from './report.js';
 import { SimctlSimulator } from './simulator.js';
@@ -48,11 +49,30 @@ program
   )
   .option('--no-dev-client', 'treat the installed app as a release build')
   .option(
+    '--changed-since <ref>',
+    'capture only the screens whose code changed against this git ref (route file, layouts, imports)'
+  )
+  .option(
+    '--judge',
+    'after capturing, ask the model whether each screen looks broken (needs ANTHROPIC_API_KEY)'
+  )
+  .option('--no-fail', 'with --judge, exit 0 even when a screen is red')
+  .option('--open', 'with --judge, open the report in the default browser')
+  .option(
     '--upload',
     'POST the run to the report server (server.url in routeshot.config, or ROUTESHOT_SERVER_URL)'
   )
   .option('--json', 'print only the run JSON on stdout')
   .action(captureCommandAsync);
+
+program
+  .command('judge')
+  .description('Ask the model whether each captured screen looks broken, given its code')
+  .argument('[run]', 'run id, label, directory, or "latest" / "previous"', 'latest')
+  .option('--no-fail', 'exit 0 even when a screen is red')
+  .option('--open', 'open the report in the default browser')
+  .option('--json', 'print only the verdicts JSON on stdout')
+  .action(judgeCommandAsync);
 
 program
   .command('upload')
@@ -83,6 +103,11 @@ interface CaptureCommandOptions {
   appearance?: 'light' | 'dark';
   /** commander: `--dev-client` gives true, `--dev-client <url>` the url, `--no-dev-client` false. */
   devClient?: boolean | string;
+  changedSince?: string;
+  judge?: boolean;
+  /** commander's `--no-fail` inverse: true unless the flag was passed. */
+  fail: boolean;
+  open?: boolean;
   upload?: boolean;
   json?: boolean;
 }
@@ -93,6 +118,9 @@ async function captureCommandAsync(options: CaptureCommandOptions): Promise<void
   }
 
   const projectRoot = process.cwd();
+  loadDotenv(projectRoot);
+  // Fail before the simulator boots when the judge was asked for but cannot run.
+  const judgeDeps = options.judge ? judgeDepsFromEnv() : undefined;
   const loaded = await loadRouteshotConfigAsync(projectRoot);
   const config: RouteshotConfig = {
     ...loaded,
@@ -108,7 +136,17 @@ async function captureCommandAsync(options: CaptureCommandOptions): Promise<void
     ...(options.label === undefined ? {} : { label: options.label }),
     ...(options.updateUrl === undefined ? {} : { updateUrl: options.updateUrl }),
     ...(options.appearance === undefined ? {} : { appearance: options.appearance }),
+    ...(options.changedSince === undefined ? {} : { changedSince: options.changedSince }),
   });
+
+  let judged: JudgeRunResult | undefined;
+  if (judgeDeps) {
+    judged = await judgeRunAsync({ dir, run, deps: judgeDeps });
+    printVerdicts(judged);
+    if (options.open) {
+      await execFilePromise('open', [judged.report.html]);
+    }
+  }
 
   let upload;
   if (options.upload) {
@@ -128,7 +166,90 @@ async function captureCommandAsync(options: CaptureCommandOptions): Promise<void
   }
 
   if (options.json) {
-    Log.json({ id: run.id, dir, routes: run.routes, ...(upload === undefined ? {} : { upload }) });
+    Log.json({
+      id: run.id,
+      dir,
+      ...(run.affected === undefined ? {} : { affected: run.affected }),
+      routes: run.routes,
+      ...(judged === undefined ? {} : { verdicts: judged.verdicts, summary: judged.summary }),
+      ...(upload === undefined ? {} : { upload }),
+    });
+  }
+  if (judged && judged.summary.red > 0 && options.fail) {
+    throw new RouteshotError(
+      'DEFECT_FOUND',
+      `${judged.summary.red} screen(s) look broken. Pass --no-fail to exit 0.`
+    );
+  }
+}
+
+interface JudgeCommandOptions {
+  fail: boolean;
+  open?: boolean;
+  json?: boolean;
+}
+
+async function judgeCommandAsync(runRef: string, options: JudgeCommandOptions): Promise<void> {
+  if (options.json) {
+    enableJsonOutput();
+  }
+  const projectRoot = process.cwd();
+  loadDotenv(projectRoot);
+  const deps = judgeDepsFromEnv();
+  const dir = await resolveRunDirAsync(projectRoot, runRef);
+  let run: CaptureRun;
+  try {
+    run = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as CaptureRun;
+  } catch (error) {
+    throw new RouteshotError('JUDGE', `Cannot read the run at ${dir}`, { cause: error });
+  }
+
+  const judged = await judgeRunAsync({ dir, run, deps });
+  printVerdicts(judged);
+  if (options.open) {
+    await execFilePromise('open', [judged.report.html]);
+  }
+  if (options.json) {
+    Log.json({
+      run: run.id,
+      dir,
+      summary: judged.summary,
+      verdicts: judged.verdicts,
+      report: judged.report,
+    });
+  }
+  if (judged.summary.red > 0 && options.fail) {
+    throw new RouteshotError(
+      'DEFECT_FOUND',
+      `${judged.summary.red} screen(s) look broken. Pass --no-fail to exit 0.`
+    );
+  }
+}
+
+function printVerdicts(judged: JudgeRunResult): void {
+  const { summary } = judged;
+  Log.log(
+    `${summary.red} red, ${summary.yellow} yellow, ${summary.green} green, ${summary.unverified} unverified`
+  );
+  for (const verdict of judged.verdicts) {
+    if (verdict.level !== 'green') {
+      Log.log(`  ${verdict.level.padEnd(10)} ${verdict.route}  ${verdict.caption}`);
+    }
+  }
+  Log.succeed(`report at ${judged.report.html}`);
+}
+
+/**
+ * `.env.local` then `.env` in the app directory, without overriding what the shell already set.
+ * That is where Expo apps keep secrets, and where `ANTHROPIC_API_KEY` for the judge belongs.
+ */
+function loadDotenv(projectRoot: string): void {
+  for (const name of ['.env.local', '.env']) {
+    try {
+      process.loadEnvFile(join(projectRoot, name));
+    } catch {
+      // No such file: fine.
+    }
   }
 }
 
