@@ -68,3 +68,12 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
   every capture (the temp-file fallback in `screenshotAsync` is what actually returned the bytes, so
   it was silent). `screenshotToStdoutAsync` now spawns with `cwd: os.tmpdir()`
   (packages/routeshot/src/simulator.ts:344). Verified: a fresh capture leaves no `example/-`.
+
+## Deployed (2026-09-09 14:15 PT)
+
+- Railway project `routeshot`: `routeshot-server` + `routeshot-postgres`, https://routeshot-server-production.up.railway.app (/health ok). IaC applied from `.railway/railway.ts`; domain (port 8080) and the three secrets set by hand.
+- GitHub secrets ROUTESHOT_SERVER_URL / ROUTESHOT_SERVER_TOKEN set on the repo; same values in example/.env.local (gitignored).
+- Live smoke: upload x2 + compare --remote -> hosted report with real verdicts (About: red 97 error).
+- Judge eval with the live key: 14/14 levels, 13/14 labels (Billing off-screen button read as `blank`).
+- EAS update mode proven: `--update-url https://u.expo.dev/update/<updateId>` (or the group URL) on the dev client, no override, same ratios as Metro.
+- The Railway MCP's list_variables echoed ANTHROPIC_API_KEY into an agent transcript on this machine. Rotate the key (30-day key anyway).

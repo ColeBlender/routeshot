@@ -52,7 +52,9 @@ railway config plan             # preview, applies nothing
 railway config apply            # same plan, then applies after confirmation
 ```
 
-Needs Railway CLI >= 5.42.1 (the IaC engine ships in the CLI, not in the `railway` npm package).
+Needs Railway CLI >= 5.42.1 and the `railway` npm package (already a root devDependency). The
+public domain is not declared in the IaC; Railpack injects `PORT=8080`, so a generated domain must
+target 8080.
 
 The repo is a pnpm shared monorepo, so the service's root directory stays the repo root and the
 workspace filter picks the package: build `pnpm install --frozen-lockfile && pnpm --filter

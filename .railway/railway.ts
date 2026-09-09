@@ -8,7 +8,8 @@ import { defineRailway, github, postgres, preserve, project, service } from 'rai
  *   railway link && railway config plan     # preview, never applies
  *   railway config apply                    # applies after showing the same plan
  *
- * Needs Railway CLI >= 5.42.1: the IaC engine ships in the CLI, not in the `railway` npm package.
+ * Needs Railway CLI >= 5.42.1 plus the `railway` npm package (root devDependency): the CLI runs
+ * this file and resolves `railway/iac` from node_modules.
  */
 export default defineRailway(() => {
   const db = postgres('routeshot-postgres');

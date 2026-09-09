@@ -184,7 +184,8 @@ async function judgeRouteResultAsync(
       score: output.score,
       defect: output.defect,
       region: output.region ?? undefined,
-      caption: output.caption,
+      // Sonnet occasionally closes the caption with a stray quote; it would land in a PR comment.
+      caption: output.caption.trim().replace(/^['"]+|['"]+$/g, ''),
     },
     spent: true,
   };

@@ -23,6 +23,7 @@
     "oxlint-config-universe": "0.2.0",
     "oxlint-tsgolint": "7.0.2001",
     "publint": "0.3.24",
+    "railway": "^3.11.0",
     "typescript": "6.0.3",
     "vitest": "5.0.0"
   },
