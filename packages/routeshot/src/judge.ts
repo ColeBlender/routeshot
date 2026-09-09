@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { PNG } from 'pngjs';
 import { z } from 'zod';
 
 import type { DefectClass, Verdict, VerdictLevel } from './types.js';
@@ -35,7 +36,12 @@ Respond ONLY with JSON in this shape, no prose:
 {"score": 0-100, "defect": "clipped|overlap|offscreen|wrapped|missing|blank|error|other|none", "region": {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1} | null, "caption": "<= 20 words"}`;
 
 export const DEFAULT_JUDGE_MODEL = 'claude-sonnet-5';
-export const JUDGE_MAX_TOKENS = 300;
+export const JUDGE_MAX_TOKENS = 400;
+/**
+ * Simulator screenshots are 3x scale (1206x2622 on an iPhone 17 Pro). Halved, text is still
+ * legible and the image lands under the API's own resize limit instead of being resampled twice.
+ */
+export const JUDGE_MAX_IMAGE_HEIGHT = 1600;
 export const JUDGE_TIMEOUT_MS = 60_000;
 export const JUDGE_CONCURRENCY = 4;
 /** score >= yellow is yellow, score >= red is red; measured on the example app's labeled screens. */
@@ -150,9 +156,45 @@ export function buildJudgeRequest(input: JudgeInput, model: string): JudgeReques
     system: JUDGE_SYSTEM_PROMPT,
     content: [
       { type: 'text', text: `Route: ${input.route}\n\n${source}\n\nSCREENSHOT:` },
-      { type: 'image', source: toImageSource(input.screenshot) },
+      { type: 'image', source: toImageSource(downscaleForJudge(input.screenshot)) },
     ],
   };
+}
+
+/**
+ * Halves a PNG (2x2 box filter) until it fits `JUDGE_MAX_IMAGE_HEIGHT`. Bytes that are not a PNG
+ * are passed through untouched; the API will say what it thinks of them.
+ */
+export function downscaleForJudge(bytes: Uint8Array): Uint8Array {
+  let png: PNG;
+  try {
+    png = PNG.sync.read(Buffer.from(bytes));
+  } catch {
+    return bytes;
+  }
+  if (png.height <= JUDGE_MAX_IMAGE_HEIGHT) {
+    return bytes;
+  }
+  while (png.height > JUDGE_MAX_IMAGE_HEIGHT) {
+    const width = Math.floor(png.width / 2);
+    const height = Math.floor(png.height / 2);
+    const half = new PNG({ width, height });
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        for (let channel = 0; channel < 4; channel += 1) {
+          const at = (sx: number, sy: number): number =>
+            png.data[(sy * png.width + sx) * 4 + channel] as number;
+          const sx = x * 2;
+          const sy = y * 2;
+          half.data[(y * width + x) * 4 + channel] = Math.round(
+            (at(sx, sy) + at(sx + 1, sy) + at(sx, sy + 1) + at(sx + 1, sy + 1)) / 4
+          );
+        }
+      }
+    }
+    png = half;
+  }
+  return new Uint8Array(PNG.sync.write(png));
 }
 
 function toImageSource(png: Uint8Array): {
@@ -199,10 +241,26 @@ async function judgeRouteResultAsync(
     };
   }
 
-  const output = parseJudgeOutput(response);
+  let output = parseJudgeOutput(response);
+  if (output === undefined) {
+    // One retry: the same request has answered cleanly on the next call every time this was seen.
+    try {
+      response = await deps.anthropic.parseAsync(buildJudgeRequest(input, deps.model), signal);
+      output = parseJudgeOutput(response);
+    } catch {
+      // Fall through with the first, unparseable answer.
+    }
+  }
   if (output === undefined) {
     // The model answered, so the tokens are gone even though the answer is useless.
-    return { verdict: unverified(input.route, 'judge returned unparseable output'), spent: true };
+    const snippet = response.text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    return {
+      verdict: unverified(
+        input.route,
+        `judge returned unparseable output${snippet ? `: ${snippet}` : ''}`
+      ),
+      spent: true,
+    };
   }
 
   return {
@@ -290,10 +348,12 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
 }
 
 /**
- * Adapts the Anthropic SDK to `JudgeModel`. SDK 0.124 exposes structured output on the stable
- * Messages API as `output_config.format` plus a `parsed_output` property; if the account or API
- * version rejects the parameter itself, the flag flips and every later call uses plain `create`
- * with the same prompt, which already demands JSON-only output.
+ * Adapts the Anthropic SDK to `JudgeModel`. Structured output is requested through
+ * `output_config.format` on plain `messages.create`, and the JSON is parsed here rather than by
+ * the SDK's `parse` helper: a truncated or odd answer then becomes "unparseable" and gets the one
+ * retry, instead of a thrown error and an unverified screen. If the account or API version
+ * rejects the parameter itself, the flag flips and every later call goes without it; the prompt
+ * already demands JSON-only output.
  */
 export function createAnthropicJudgeModel(client: Anthropic): JudgeModel {
   let structuredOutputSupported = true;
@@ -309,11 +369,11 @@ export function createAnthropicJudgeModel(client: Anthropic): JudgeModel {
 
       if (structuredOutputSupported) {
         try {
-          const message = await client.messages.parse(
+          const message = await client.messages.create(
             { ...params, output_config: { format: zodOutputFormat(judgeOutputSchema) } },
             { signal }
           );
-          return { parsedOutput: message.parsed_output, text: textOf(message.content) };
+          return { parsedOutput: undefined, text: textOf(message.content) };
         } catch (error) {
           if (signal.aborted || !isStructuredOutputUnsupported(error)) {
             throw error;

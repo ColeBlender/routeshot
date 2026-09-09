@@ -1,49 +1,47 @@
 #!/usr/bin/env node
 /**
- * Scores the server's judge against the example runs, whose expected verdict per screen is fixed
- * by example/README.md. Diffs with the CLI's own diff, then feeds every changed route to
- * `judgeRoutesAsync` with the deployed thresholds, so a prompt change is measurable.
- *   pnpm judge:eval                                 # baseline vs broken and benign
- *   pnpm judge:eval <baselineDir> <candidateDir>... # any runs; expectations show as "?"
+ * Scores the judge against the example runs. Every screen of every labeled run is judged on its
+ * own (screenshot + code, no baseline), and the expected verdict per screen comes from
+ * example/README.md: `broken` holds one defect per screen, `baseline` and `benign` hold none.
+ *
+ *   pnpm judge:eval                    # newest baseline, benign and broken runs under example/
+ *   pnpm judge:eval <runDir>...        # any runs; expectations show as "?" for unknown labels
+ *   JUDGE_EVAL_REPEAT=3 pnpm judge:eval   # judge each run N times to see the variance
  */
-import { mkdtemp, readdir, readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { DEFAULT_THRESHOLD, diffRunsAsync } from '../packages/routeshot/dist/index.js';
 import {
   createAnthropicJudgeModel,
-  judgeRouteAsync,
-  judgeRoutesAsync,
+  DEFAULT_JUDGE_MODEL,
+  DEFAULT_JUDGE_THRESHOLDS,
   JUDGE_CONCURRENCY,
   JUDGE_TIMEOUT_MS,
+  judgeRoutesAsync,
+  type CaptureRun,
   type JudgeDeps,
   type JudgeInput,
-} from '../packages/server/dist/judge.mjs';
+  type Verdict,
+} from '../packages/routeshot/dist/index.js';
 
-type Verdict = Awaited<ReturnType<typeof judgeRouteAsync>>;
-
-/** example/README.md: one defect class per screen in `broken`, none in `benign`. Unlisted = green. */
-const DEFECTS: Record<string, Record<string, string>> = {
+/** Labels the judge may use for each deliberate defect. The level (red) is what matters most. */
+const DEFECTS: Record<string, Record<string, string[]>> = {
   broken: {
-    '/': 'clipped',
-    '/about': 'error',
-    '/explore': 'overlap',
-    '/items/[id]': 'blank',
-    '/settings/billing': 'offscreen',
+    '/': ['clipped'],
+    '/about': ['error'],
+    '/explore': ['overlap'],
+    '/items/[id]': ['blank', 'missing'],
+    '/settings/billing': ['offscreen', 'missing'],
   },
   benign: {},
+  baseline: {},
 };
-
-// `baseline`, not `before`: before/again are the repeatability pair, captured against a different
-// dev-client state, so diffing them against `broken` even moves the two unchanged controls.
-const DEFAULT_BASELINE = 'baseline';
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const runsDir = join(repoRoot, 'example', '.routeshot', 'runs');
-const WIDTHS = [19, 15, 12, 7, 11];
+const WIDTHS = [19, 20, 12, 7, 11];
 const row = (cells: string[]): string =>
   cells.map((cell, index) => cell.padEnd(WIDTHS[index] ?? 0)).join('');
 
@@ -74,34 +72,32 @@ async function runDirForLabelAsync(label: string): Promise<string> {
   }
   throw new Error(
     `No run labelled "${label}" under ${runsDir}. ` +
-      `Capture one with: cd example && npx routeshot capture --label ${label}`
+      `Capture one with: cd example && EXPO_PUBLIC_ROUTESHOT_SCENARIO=${label} npx expo start, then pnpm exec routeshot capture --label ${label}`
   );
 }
 
-/** The judge only sees screens that moved, so `inputs` is also what a real compare would spend. */
-async function scenarioAsync(baselineDir: string, dir: string, threshold: number) {
-  const outDir = await mkdtemp(join(tmpdir(), 'routeshot-judge-eval-'));
-  const report = await diffRunsAsync(baselineDir, dir, { threshold, outDir });
-  const changed = report.routes.filter((route) => route.status === 'changed' && route.files.diff);
-  const inputs: JudgeInput[] = await Promise.all(
-    changed.map(async (route) => ({
-      route: route.route,
-      before: await readFile(join(outDir, route.files.before ?? '')),
-      after: await readFile(join(outDir, route.files.after ?? '')),
-      diff: await readFile(join(outDir, route.files.diff ?? '')),
-      diffRatio: route.diffRatio ?? 0,
-    }))
-  );
-  const label = Object.keys(DEFECTS).find((name) => dir.includes(`-${name}-`)) ?? '';
-  return { label, routes: report.routes, inputs };
+async function inputsForAsync(dir: string): Promise<{ run: CaptureRun; inputs: JudgeInput[] }> {
+  const run = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as CaptureRun;
+  const inputs: JudgeInput[] = [];
+  for (const entry of run.routes) {
+    if (entry.status !== 'captured' || entry.file === undefined) {
+      continue;
+    }
+    inputs.push({
+      route: entry.route,
+      screenshot: await readFile(join(dir, entry.file)),
+      code: entry.code === undefined ? undefined : await readFile(join(dir, entry.code), 'utf8'),
+    });
+  }
+  return { run, inputs };
 }
 
-/** Resolved out of the server package so the eval runs the exact SDK version the server ships. */
+/** Resolved out of the CLI package so the eval runs the exact SDK version it ships. */
 async function judgeDepsAsync(
   apiKey: string,
   rest: Omit<JudgeDeps, 'anthropic'>
 ): Promise<JudgeDeps> {
-  const entry = createRequire(join(repoRoot, 'packages/server/package.json'));
+  const entry = createRequire(join(repoRoot, 'packages/routeshot/package.json'));
   const { default: Anthropic } = (await import(
     pathToFileURL(entry.resolve('@anthropic-ai/sdk')).href
   )) as { default: new (options: { apiKey: string }) => never };
@@ -109,69 +105,78 @@ async function judgeDepsAsync(
 }
 
 async function mainAsync(): Promise<void> {
-  const [baselineArg, ...candidateArgs] = process.argv.slice(2);
-  const baselineDir = baselineArg ?? (await runDirForLabelAsync(DEFAULT_BASELINE));
-  const candidateDirs =
-    candidateArgs.length > 0
-      ? candidateArgs
-      : await Promise.all(Object.keys(DEFECTS).map(runDirForLabelAsync));
-
-  const yellow = numberFromEnv('JUDGE_YELLOW', 40);
-  const thresholds = { yellow, red: numberFromEnv('JUDGE_RED', 75) };
-  const threshold = numberFromEnv('ROUTESHOT_THRESHOLD', DEFAULT_THRESHOLD);
-  const model = process.env['ANTHROPIC_MODEL'] ?? 'claude-sonnet-5';
+  const dirs =
+    process.argv.length > 2
+      ? process.argv.slice(2)
+      : await Promise.all(['baseline', 'benign', 'broken'].map(runDirForLabelAsync));
+  const repeat = numberFromEnv('JUDGE_EVAL_REPEAT', 1);
+  const thresholds = {
+    yellow: numberFromEnv('JUDGE_YELLOW', DEFAULT_JUDGE_THRESHOLDS.yellow),
+    red: numberFromEnv('JUDGE_RED', DEFAULT_JUDGE_THRESHOLDS.red),
+  };
+  const model = process.env['ANTHROPIC_MODEL'] ?? DEFAULT_JUDGE_MODEL;
   const apiKey = process.env['ANTHROPIC_API_KEY'];
-  const config = {
+  if (!apiKey) {
+    out('no ANTHROPIC_API_KEY, nothing to evaluate');
+    return;
+  }
+  const deps = await judgeDepsAsync(apiKey, {
     model,
     thresholds,
     timeoutMs: JUDGE_TIMEOUT_MS,
     concurrency: JUDGE_CONCURRENCY,
     quota: undefined,
     now: () => new Date(),
-  };
-  const deps = apiKey ? await judgeDepsAsync(apiKey, config) : undefined;
+  });
 
-  out(`diff > ${threshold} · yellow >= ${thresholds.yellow} · red >= ${thresholds.red} · ${model}`);
-  out(`baseline ${baselineDir}`);
+  out(`yellow >= ${thresholds.yellow} · red >= ${thresholds.red} · ${model} · ${repeat}x`);
 
-  const tally = new Map<string, { hit: number; seen: number }>();
-  for (const dir of candidateDirs) {
-    const { label, routes, inputs } = await scenarioAsync(baselineDir, dir, threshold);
-    const verdicts = new Map<string, Verdict>(
-      deps ? (await judgeRoutesAsync(inputs, deps)).map((item) => [item.route, item]) : []
-    );
-
-    out(`\n${dir}`);
-    out(`   ${row(['route', 'want', 'got', 'score', 'defect'])}caption`);
-    for (const route of routes) {
-      const wantDefect = DEFECTS[label]?.[route.route] ?? 'none';
-      const want = label === '' ? '?' : wantDefect === 'none' ? 'green' : 'red';
-      const verdict = verdicts.get(route.route);
-      const changed = inputs.some((input) => input.route === route.route);
-      // Zero moved pixels never reaches the judge, and the server scores that green/none too.
-      const got = deps ? (verdict?.level ?? 'green') : changed ? 'would judge' : 'skipped';
-      const defect = verdict?.defect ?? (changed ? '-' : 'none');
-      const ok = deps !== undefined && want !== '?' && got === want && defect === wantDefect;
-      if (deps) {
-        const seen = tally.get(want) ?? { hit: 0, seen: 0 };
-        tally.set(want, { hit: seen.hit + (ok ? 1 : 0), seen: seen.seen + 1 });
-      }
-      out(
-        `  ${ok || !deps ? ' ' : '✗'}` +
-          row([route.route, `${want}:${wantDefect}`, got, String(verdict?.score ?? '-'), defect]) +
-          `${verdict?.caption ?? (changed ? '' : 'no pixels moved')}`
+  let levelHits = 0;
+  let labelHits = 0;
+  let seen = 0;
+  let unverified = 0;
+  for (const dir of dirs) {
+    const { run, inputs } = await inputsForAsync(dir);
+    const expectations = DEFECTS[run.label];
+    for (let pass = 0; pass < repeat; pass += 1) {
+      const verdicts = new Map<string, Verdict>(
+        (await judgeRoutesAsync(inputs, deps)).map((item) => [item.route, item])
       );
+      out(`\n${dir}${repeat > 1 ? ` (pass ${pass + 1})` : ''}`);
+      out(`   ${row(['route', 'want', 'got', 'score', 'defect'])}caption`);
+      for (const input of inputs) {
+        const verdict = verdicts.get(input.route);
+        const wantLabels = expectations?.[input.route] ?? (expectations ? ['none'] : undefined);
+        const wantLevel =
+          wantLabels === undefined ? '?' : wantLabels[0] === 'none' ? 'green' : 'red';
+        const got = verdict?.level ?? 'unverified';
+        const defect = verdict?.defect ?? '-';
+        const levelOk = wantLevel !== '?' && got === wantLevel;
+        const labelOk = levelOk && (wantLabels?.includes(defect) ?? false);
+        if (wantLevel !== '?') {
+          seen += 1;
+          levelHits += levelOk ? 1 : 0;
+          labelHits += labelOk ? 1 : 0;
+          unverified += got === 'unverified' ? 1 : 0;
+        }
+        out(
+          `  ${labelOk || wantLevel === '?' ? ' ' : levelOk ? '~' : '✗'}` +
+            row([
+              input.route,
+              wantLabels === undefined ? '?' : `${wantLevel}:${wantLabels.join('|')}`,
+              got,
+              String(verdict?.score ?? '-'),
+              defect,
+            ]) +
+            (verdict?.caption ?? '')
+        );
+      }
     }
   }
 
-  if (!deps) {
-    out('\nno ANTHROPIC_API_KEY, judge skipped');
-    return;
-  }
-  const totals = [...tally].map(([want, t]) => `${want} ${t.hit}/${t.seen}`).join(' · ');
-  const hit = [...tally.values()].reduce((sum, t) => sum + t.hit, 0);
-  const seen = [...tally.values()].reduce((sum, t) => sum + t.seen, 0);
-  out(`\n${hit}/${seen} routes matched · ${totals}`);
+  out(
+    `\n${levelHits}/${seen} verdict levels · ${labelHits}/${seen} defect labels · ${unverified} unverified`
+  );
 }
 
 await mainAsync();

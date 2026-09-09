@@ -1,10 +1,12 @@
 import type Anthropic from '@anthropic-ai/sdk';
+import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_JUDGE_MODEL,
   JUDGE_SYSTEM_PROMPT,
   buildJudgeRequest,
+  downscaleForJudge,
   createAnthropicJudgeModel,
   judgeRouteAsync,
   judgeRoutesAsync,
@@ -61,7 +63,7 @@ describe('buildJudgeRequest', () => {
 
     expect(request.model).toBe('claude-sonnet-5');
     expect(request.system).toBe(JUDGE_SYSTEM_PROMPT);
-    expect(request.maxTokens).toBeLessThanOrEqual(300);
+    expect(request.maxTokens).toBeLessThanOrEqual(400);
     expect(request.content.map((block) => block.type)).toEqual(['text', 'image']);
     const first = request.content[0];
     const text = first?.type === 'text' ? first.text : '';
@@ -71,6 +73,16 @@ describe('buildJudgeRequest', () => {
     const image = request.content[1];
     expect(image?.type === 'image' ? image.source.media_type : '').toBe('image/png');
     expect(image?.type === 'image' ? image.source.data.length : 0).toBeGreaterThan(0);
+  });
+
+  it('sends tall screenshots halved', () => {
+    const tall = makePng(4, 3400, [10, 20, 30]);
+    const request = buildJudgeRequest({ ...input(), screenshot: tall }, 'claude-sonnet-5');
+    const image = request.content[1];
+    const sent =
+      image?.type === 'image' ? Buffer.from(image.source.data, 'base64') : Buffer.alloc(0);
+    expect(PNG.sync.read(sent).height).toBe(850);
+    expect(downscaleForJudge(makePng(4, 4, [0, 0, 0]))).toEqual(makePng(4, 4, [0, 0, 0]));
   });
 
   it('says so when no source was captured instead of inventing one', () => {
@@ -157,7 +169,25 @@ describe('judgeRouteAsync', () => {
     expect(verdict.region).toBeUndefined();
   });
 
-  it('returns unverified when the answer cannot be parsed', async () => {
+  it('retries once on an unparseable answer and takes the second one', async () => {
+    let calls = 0;
+    const verdict = await judgeRouteAsync(
+      input(),
+      deps({
+        anthropic: fakeJudge(() => {
+          calls += 1;
+          return calls === 1
+            ? { text: 'looks fine to me' }
+            : { parsedOutput: { score: 4, defect: 'none', region: null, caption: 'fine' } };
+        }),
+      })
+    );
+
+    expect(calls).toBe(2);
+    expect(verdict.level).toBe('green');
+  });
+
+  it('returns unverified with a snippet when both answers cannot be parsed', async () => {
     const verdict = await judgeRouteAsync(
       input(),
       deps({ anthropic: fakeJudge(() => ({ text: 'looks fine to me' })) })
@@ -165,7 +195,7 @@ describe('judgeRouteAsync', () => {
 
     expect(verdict.level).toBe('unverified');
     expect(verdict.score).toBeUndefined();
-    expect(verdict.caption).toBe('judge returned unparseable output');
+    expect(verdict.caption).toBe('judge returned unparseable output: looks fine to me');
   });
 
   it('returns unverified rather than throwing when the model call fails', async () => {
@@ -341,57 +371,61 @@ describe('createAnthropicJudgeModel', () => {
     return Object.assign(new Error(message), { status: 400, error: body });
   }
 
-  function fakeClient(messages: {
-    parse: () => Promise<unknown>;
-    create: () => Promise<unknown>;
-  }): Anthropic {
-    return { messages } as unknown as Anthropic;
+  interface CreateParams {
+    output_config?: unknown;
   }
 
-  it('latches structured output off when the API rejects the parameter itself', async () => {
-    let parseCalls = 0;
-    let createCalls = 0;
+  function fakeClient(create: (params: CreateParams) => Promise<unknown>): Anthropic {
+    return { messages: { create } } as unknown as Anthropic;
+  }
+
+  it('asks for JSON output and hands the text back for local parsing', async () => {
+    const seen: CreateParams[] = [];
     const model = createAnthropicJudgeModel(
-      fakeClient({
-        parse: async () => {
-          parseCalls += 1;
+      fakeClient(async (params) => {
+        seen.push(params);
+        return { content: [{ type: 'text', text: '{"score":1}' }] };
+      })
+    );
+
+    const result = await model.parseAsync(request, new AbortController().signal);
+
+    expect(result.parsedOutput).toBeUndefined();
+    expect(result.text).toBe('{"score":1}');
+    expect(seen[0]?.output_config).toBeDefined();
+  });
+
+  it('latches structured output off when the API rejects the parameter itself', async () => {
+    const seen: CreateParams[] = [];
+    const model = createAnthropicJudgeModel(
+      fakeClient(async (params) => {
+        seen.push(params);
+        if (params.output_config !== undefined) {
           throw badRequest('400 invalid_request_error', {
             error: { message: 'output_config: unexpected parameter' },
           });
-        },
-        create: async () => {
-          createCalls += 1;
-          return { content: [{ type: 'text', text: '{"score":1}' }] };
-        },
+        }
+        return { content: [{ type: 'text', text: '{"score":1}' }] };
       })
     );
 
     const first = await model.parseAsync(request, new AbortController().signal);
-    expect(first.parsedOutput).toBeUndefined();
     expect(first.text).toBe('{"score":1}');
 
     await model.parseAsync(request, new AbortController().signal);
     // Latched: the second call never retries the unsupported parameter.
-    expect(parseCalls).toBe(1);
-    expect(createCalls).toBe(2);
+    expect(seen.map((params) => params.output_config !== undefined)).toEqual([true, false, false]);
   });
 
   it('rethrows an unrelated 400 and keeps structured output on for the next route', async () => {
-    let parseCalls = 0;
-    let createCalls = 0;
+    const seen: CreateParams[] = [];
     const model = createAnthropicJudgeModel(
-      fakeClient({
-        parse: async () => {
-          parseCalls += 1;
-          if (parseCalls === 1) {
-            throw badRequest('400 image exceeds 5 MB maximum');
-          }
-          return { parsed_output: { score: 3 }, content: [] };
-        },
-        create: async () => {
-          createCalls += 1;
-          return { content: [] };
-        },
+      fakeClient(async (params) => {
+        seen.push(params);
+        if (seen.length === 1) {
+          throw badRequest('400 image exceeds 5 MB maximum');
+        }
+        return { content: [{ type: 'text', text: '{"score":3}' }] };
       })
     );
 
@@ -400,22 +434,18 @@ describe('createAnthropicJudgeModel', () => {
     );
     const second = await model.parseAsync(request, new AbortController().signal);
 
-    expect(second.parsedOutput).toEqual({ score: 3 });
-    expect(parseCalls).toBe(2);
-    expect(createCalls).toBe(0);
+    expect(second.text).toBe('{"score":3}');
+    expect(seen.every((params) => params.output_config !== undefined)).toBe(true);
   });
 
   it('turns an unrelated 400 into one unverified route carrying the reason', async () => {
     const model = createAnthropicJudgeModel(
-      fakeClient({
-        parse: async () => {
-          throw badRequest('400 image exceeds 5 MB maximum');
-        },
-        create: async () => ({ content: [] }),
+      fakeClient(async () => {
+        throw badRequest('400 image exceeds 5 MB maximum');
       })
     );
 
-    const verdict = await judgeRouteAsync(input('/big'), deps({ anthropic: model }));
+    const verdict = await judgeRouteAsync(input(), deps({ anthropic: model }));
 
     expect(verdict.level).toBe('unverified');
     expect(verdict.caption).toContain('image exceeds 5 MB');

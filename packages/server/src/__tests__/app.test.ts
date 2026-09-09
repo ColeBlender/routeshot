@@ -446,7 +446,7 @@ describe('GET /compare', () => {
 
     expect(report.verdicts?.find((item) => item.route === '/')).toMatchObject({
       level: 'unverified',
-      caption: 'judge returned unparseable output',
+      caption: 'judge returned unparseable output: no idea',
     });
   });
 
