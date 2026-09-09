@@ -164,10 +164,11 @@ describe('captureAsync', () => {
 
   it('uses the per-route waitFor as the settle timeout', async () => {
     const projectRoot = await makeProjectRootAsync();
-    // Two frames that never repeat, so the route can only end on the timeout.
+    // Frames that never repeat, so the route can only end on the timeout. A counter, not
+    // Math.random: two random bytes collide about one pair in 255 and the route "settles".
     const sim = new FakeSimulator({ devices: [DEVICE] });
-    sim.screenshotAsync = () =>
-      Promise.resolve(makeFakePng({ color: [Math.floor(Math.random() * 255), 0, 0, 255] }));
+    let frame = 0;
+    sim.screenshotAsync = () => Promise.resolve(makeFakePng({ color: [frame++ % 255, 0, 0, 255] }));
 
     const config: RouteshotConfig = {
       ...CONFIG,

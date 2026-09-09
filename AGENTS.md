@@ -6,7 +6,7 @@ This file is the map for humans and coding agents alike. Keep it accurate; keep 
 ## Layout
 
 - `packages/routeshot/` the npm package. Three entry points built by tsdown:
-  - `src/cli.ts` the `routeshot` binary (`capture`, `compare`)
+  - `src/cli.ts` the `routeshot` binary (`capture`, `upload`, `compare`)
   - `src/index.ts` the programmatic API
   - `src/expo.ts` the in-app hook for the EAS update-group mode (imports only `expo-updates`)
 - `packages/server/` the report server deployed to Railway (Hono + Postgres). Stores runs, diffs them, serves the HTML report, asks Claude for a verdict per changed screen.

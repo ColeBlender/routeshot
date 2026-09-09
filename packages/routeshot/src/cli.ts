@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command, Option } from 'commander';
 import { execFile } from 'node:child_process';
-import { readdir, stat } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -18,6 +18,7 @@ import { isRouteshotError, RouteshotError } from './errors.js';
 import { enableJsonOutput, Log } from './log.js';
 import { writeReportAsync } from './report.js';
 import { SimctlSimulator } from './simulator.js';
+import type { CaptureRun } from './types.js';
 import { requestVerdictsAsync, resolveRemoteRunIdAsync, uploadRunAsync } from './upload.js';
 
 /** Named without the `Async` suffix because it is not an `async function`, only promise-returning. */
@@ -49,6 +50,13 @@ program
   )
   .option('--json', 'print only the run JSON on stdout')
   .action(captureCommandAsync);
+
+program
+  .command('upload')
+  .description('Send a run that is already on disk to the report server')
+  .argument('<run>', 'run id, run directory, or "latest" / "previous"')
+  .option('--json', 'print only the upload JSON on stdout')
+  .action(uploadCommandAsync);
 
 program
   .command('compare')
@@ -134,6 +142,57 @@ function devClientFromFlag(
   return loaded.devClient ?? { url: DEFAULT_DEV_SERVER_URL };
 }
 
+interface UploadCommandOptions {
+  json?: boolean;
+}
+
+/**
+ * `capture --upload` covers the machine that took the screenshots. CI splits the two: the macOS
+ * runner captures and stores the run as an artifact, and a later job uploads it once the build it
+ * belongs to is known, so the run has to be postable from disk without a simulator.
+ */
+async function uploadCommandAsync(runRef: string, options: UploadCommandOptions): Promise<void> {
+  if (options.json) {
+    enableJsonOutput();
+  }
+
+  const projectRoot = process.cwd();
+  const server = await resolveServerAsync(projectRoot);
+  const dir = await resolveRunDirAsync(projectRoot, runRef);
+  let run: CaptureRun;
+  try {
+    run = JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as CaptureRun;
+  } catch (error) {
+    throw new RouteshotError('UPLOAD', `Cannot read the run at ${dir}`, { cause: error });
+  }
+
+  const upload = await uploadRunAsync({ dir, run, serverUrl: server.url, token: server.token });
+  Log.succeed(`uploaded ${run.label} to ${upload.url}`);
+
+  if (options.json) {
+    Log.json({ ...upload, dir, label: run.label });
+  }
+}
+
+/**
+ * `upload` and `compare --remote` run against downloaded run artifacts in CI, where there is no
+ * Expo app and `loadRouteshotConfigAsync` throws for the missing scheme. The server can still come
+ * from the environment, so a config that will not load falls back to it rather than reporting a
+ * server that was in fact configured.
+ */
+async function resolveServerAsync(projectRoot: string): Promise<{ url: string; token: string }> {
+  const configured = (await loadRouteshotConfigAsync(projectRoot).catch(() => undefined))?.server;
+  const url = configured?.url ?? process.env['ROUTESHOT_SERVER_URL'];
+  const token = configured?.token ?? process.env['ROUTESHOT_SERVER_TOKEN'];
+  if (!url || !token) {
+    throw new RouteshotError(
+      'CONFIG',
+      'No report server. Set server.url and server.token in routeshot.config, or ROUTESHOT_SERVER_URL and ROUTESHOT_SERVER_TOKEN.'
+    );
+  }
+  return { url, token };
+}
+
 interface CompareCommandOptions {
   threshold?: string;
   remote?: boolean;
@@ -210,13 +269,7 @@ async function compareRemoteAsync(
   threshold: number,
   options: CompareCommandOptions
 ): Promise<void> {
-  const server = (await loadRouteshotConfigAsync(projectRoot).catch(() => undefined))?.server;
-  if (!server) {
-    throw new RouteshotError(
-      'CONFIG',
-      '--remote needs server.url and server.token in routeshot.config, or ROUTESHOT_SERVER_URL and ROUTESHOT_SERVER_TOKEN'
-    );
-  }
+  const server = await resolveServerAsync(projectRoot);
   const serverOptions = { serverUrl: server.url, token: server.token };
   const [baselineId, candidateId] = await Promise.all([
     resolveRemoteRunIdAsync(serverOptions, baselineRef),

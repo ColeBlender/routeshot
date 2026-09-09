@@ -74,12 +74,13 @@ function runCliAsync(cwd: string, args: string[]) {
 }
 
 describe('routeshot --help', () => {
-  it('lists both commands', async () => {
+  it('lists every command', async () => {
     const result = await runCliAsync(process.cwd(), ['--help']);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Screenshot every expo-router route');
     expect(result.stdout).toMatch(/capture \[options\]\s+Deep link every route/);
+    expect(result.stdout).toMatch(/upload \[options\] <run>\s+Send a run that is already on disk/);
     expect(result.stdout).toMatch(/compare \[options\] <baseline> <candidate>\s+Diff two runs/);
   });
 
@@ -108,6 +109,45 @@ describe('routeshot --help', () => {
     for (const flag of ['--threshold', '--no-fail', '--open', '--json']) {
       expect(result.stdout).toContain(flag);
     }
+  });
+});
+
+describe('routeshot upload', () => {
+  it('documents the run argument and flags', async () => {
+    const result = await runCliAsync(process.cwd(), ['upload', '--help']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('run id, run directory, or "latest" / "previous"');
+    expect(result.stdout).toContain('--json');
+  });
+
+  it('exits 1 with a CONFIG error when no report server is configured', async () => {
+    const root = await makeRootAsync();
+
+    const result = await execa(process.execPath, [cli, 'upload', 'latest'], {
+      cwd: root,
+      reject: false,
+      // The ambient environment may point at a real server; this asserts the unconfigured path.
+      env: { ROUTESHOT_SERVER_URL: undefined, ROUTESHOT_SERVER_TOKEN: undefined },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('ROUTESHOT_SERVER_URL');
+  });
+
+  it('exits 1 for a run reference that is not on disk, before any request', async () => {
+    const root = await makeRootAsync();
+
+    const result = await execa(process.execPath, [cli, 'upload', 'nope'], {
+      cwd: root,
+      reject: false,
+      // A server it could never reach: resolving the ref has to fail first.
+      env: { ROUTESHOT_SERVER_URL: 'http://127.0.0.1:9', ROUTESHOT_SERVER_TOKEN: 'token' },
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('No run "nope"');
   });
 });
 
