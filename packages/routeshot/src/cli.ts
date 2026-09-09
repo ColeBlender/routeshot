@@ -57,15 +57,15 @@ program
 program
   .command('upload')
   .description('Send a run that is already on disk to the report server')
-  .argument('<run>', 'run id, run directory, or "latest" / "previous"')
+  .argument('<run>', 'run id, label, directory, or "latest" / "previous"')
   .option('--json', 'print only the upload JSON on stdout')
   .action(uploadCommandAsync);
 
 program
   .command('compare')
   .description('Diff two runs and write report.html + report.json')
-  .argument('<baseline>', 'run id, run directory, or "latest" / "previous"')
-  .argument('<candidate>', 'run id, run directory, or "latest" / "previous"')
+  .argument('<baseline>', 'run id, label, directory, or "latest" / "previous"')
+  .argument('<candidate>', 'run id, label, directory, or "latest" / "previous"')
   .option('--threshold <ratio>', 'fraction of differing pixels that counts as changed')
   .option(
     '--remote',
@@ -355,10 +355,25 @@ async function resolveRunDirAsync(projectRoot: string, ref: string): Promise<str
   if (await isRunDirAsync(asId)) {
     return asId;
   }
+  // `--label before` is how a run gets named by hand, so the label has to work as a ref. Labels
+  // repeat (CI labels every run with the branch), and the newest one is the run people mean.
+  for (const dir of await runDirsByRecencyAsync(runsDir)) {
+    if ((await readRunLabelAsync(dir)) === ref) {
+      return dir;
+    }
+  }
   throw new RouteshotError(
     'COMPARE',
-    `No run "${ref}": not a run directory, and not an id in ${runsDir}`
+    `No run "${ref}": not a run directory, and not an id or label in ${runsDir}`
   );
+}
+
+async function readRunLabelAsync(dir: string): Promise<string | undefined> {
+  try {
+    return (JSON.parse(await readFile(join(dir, 'index.json'), 'utf8')) as CaptureRun).label;
+  } catch {
+    return undefined;
+  }
 }
 
 async function runDirsByRecencyAsync(runsDir: string): Promise<string[]> {

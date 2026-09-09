@@ -35,7 +35,12 @@ function png(width: number, height: number, differentPixels = 0): Buffer {
   return PNG.sync.write(image);
 }
 
-async function makeRunAsync(root: string, id: string, differentPixels: number): Promise<void> {
+async function makeRunAsync(
+  root: string,
+  id: string,
+  differentPixels: number,
+  label = id
+): Promise<void> {
   const dir = path.join(root, '.routeshot', 'runs', id);
   await fs.mkdir(dir, { recursive: true });
   const entry: CaptureEntry = {
@@ -48,7 +53,7 @@ async function makeRunAsync(root: string, id: string, differentPixels: number): 
   };
   const run: CaptureRun = {
     id,
-    label: id,
+    label,
     createdAt: '2026-09-09T20:15:03Z',
     device: { udid: 'U', name: 'iPhone 17 Pro', runtime: 'iOS 26.5', state: 'Booted' },
     app: { bundleId: 'com.example.demo', scheme: 'demo' },
@@ -105,7 +110,7 @@ describe('routeshot --help', () => {
     const result = await runCliAsync(process.cwd(), ['compare', '--help']);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('run id, run directory, or "latest" / "previous"');
+    expect(result.stdout).toContain('run id, label, directory, or "latest" / "previous"');
     for (const flag of ['--threshold', '--no-fail', '--open', '--json']) {
       expect(result.stdout).toContain(flag);
     }
@@ -117,7 +122,7 @@ describe('routeshot upload', () => {
     const result = await runCliAsync(process.cwd(), ['upload', '--help']);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('run id, run directory, or "latest" / "previous"');
+    expect(result.stdout).toContain('run id, label, directory, or "latest" / "previous"');
     expect(result.stdout).toContain('--json');
   });
 
@@ -147,7 +152,7 @@ describe('routeshot upload', () => {
     });
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('No run "nope"');
+    expect(result.stderr).toContain('No run "nope": not a run directory, and not an id or label');
   });
 });
 
@@ -214,6 +219,19 @@ describe('routeshot compare', () => {
     expect(report.candidate.id).toBe('cand');
   });
 
+  it('resolves a label to the newest run carrying it', async () => {
+    const root = await makeRootAsync();
+    await makeRunAsync(root, 'cand-older', 40, 'after');
+    await makeRunAsync(root, 'cand-newer', 40, 'after');
+    const older = new Date('2026-09-01T00:00:00Z');
+    await fs.utimes(path.join(root, '.routeshot', 'runs', 'cand-older'), older, older);
+
+    const result = await runCliAsync(root, ['compare', 'base', 'after', '--no-fail', '--json']);
+
+    expect(result.exitCode).toBe(0);
+    expect((JSON.parse(result.stdout) as CompareReport).candidate.id).toBe('cand-newer');
+  });
+
   it('accepts run directories as well as ids', async () => {
     const root = await makeRootAsync();
     const runs = path.join(root, '.routeshot', 'runs');
@@ -237,7 +255,7 @@ describe('routeshot compare', () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('No run "nope"');
+    expect(result.stderr).toContain('No run "nope": not a run directory, and not an id or label');
   });
 
   it('rejects a threshold outside 0..1', async () => {
