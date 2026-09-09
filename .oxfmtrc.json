@@ -12,7 +12,9 @@
     "**/ios/**",
     "**/android/**",
     "**/.routeshot/**",
-    "pnpm-lock.yaml"
+    "pnpm-lock.yaml",
+    "**/.vitest/**",
+    "**/coverage/**"
   ],
   "sortImports": {
     "groups": [

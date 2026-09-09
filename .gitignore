@@ -10,3 +10,4 @@ coverage/
 example/ios/
 example/android/
 example/.expo/
+.vitest/
