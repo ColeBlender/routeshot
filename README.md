@@ -48,6 +48,37 @@ flowchart LR
 - A screen counts as settled when two consecutive frames 300 ms apart are identical, with a 5 s cap and a per-route override.
 - Identical pixels never call the model. Changed screens are sent as before, after, and diff mask; the model returns a score, a defect class, and a one-line caption. Two thresholds (`JUDGE_YELLOW` 40, `JUDGE_RED` 75 by default) map the score to green, yellow, or red. When it cannot judge, the result is `unverified`, never a silent green.
 
+## What the numbers look like
+
+Measured on the example app, iPhone 17 Pro simulator, iOS 26.5, development build loading from Metro:
+
+| Comparison                                                                       | Result                                                        |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Two identical captures, 7 routes                                                 | 0 differing pixels on every route                             |
+| Benign edits (copy tweak, color change, reordered list)                          | 0.30% to 0.47% of pixels on the 3 touched routes, 0 elsewhere |
+| Deliberate defects (clipped title, off-screen button, overlap, blank, error box) | 1.17% to 10.65% on the 5 broken routes, 0 elsewhere           |
+| A full 7-route capture                                                           | about 19 seconds; screens settle in 0.9 to 3.3 seconds        |
+
+The default threshold is 0.1%, well under the smallest real change and far above the measured noise.
+
+The judge, scored with `pnpm judge:eval` against the same runs (`claude-sonnet-5`, thresholds 40 / 75):
+
+| Screen              | Change                           | Score   | Verdict                                 |
+| ------------------- | -------------------------------- | ------- | --------------------------------------- |
+| Home                | title clipped mid-word           | 92      | red, `clipped`                          |
+| About               | error box instead of content     | 97      | red, `error`                            |
+| Explore             | button drawn over the caption    | 92      | red, `overlap`                          |
+| Item detail         | blank below the header           | 96      | red, `blank`                            |
+| Billing             | primary button pushed off-screen | 90      | red, `blank` (right level, wrong label) |
+| Home                | subtitle copy edited             | 3       | green                                   |
+| Explore             | accent color changed             | 3       | green                                   |
+| Settings            | list reordered                   | 5       | green                                   |
+| 6 untouched screens | identical pixels                 | no call | green                                   |
+
+14 of 14 verdict levels correct, 13 of 14 defect labels. Scores cluster at 3 to 5 for intentional
+changes and 90 to 97 for defects, so the 40 / 75 thresholds are not doing delicate work on this set.
+A larger labeled set is the first thing to build before trusting them on a real app.
+
 ## EAS update mode
 
 `routeshot capture --update-url https://u.expo.dev/<projectId>/group/<groupId>` loads a specific
