@@ -1,0 +1,26 @@
+{
+  "name": "@routeshot/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "routeshot report server: stores runs, serves side-by-side reports, judges changed screens.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "dev": "node --env-file=.env --watch dist/main.js",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.124.0",
+    "@hono/node-server": "2.1.1",
+    "hono": "4.13.7",
+    "postgres": "3.4.9",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "tsdown": "0.23.0"
+  }
+}

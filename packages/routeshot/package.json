@@ -1,0 +1,47 @@
+{
+  "name": "routeshot",
+  "version": "0.1.0",
+  "description": "Screenshot every expo-router route, before and after an EAS update, and show what changed.",
+  "license": "MIT",
+  "author": "Cole Blender",
+  "type": "module",
+  "bin": { "routeshot": "./dist/cli.js" },
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./expo": { "types": "./dist/expo.d.ts", "import": "./dist/expo.js" }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "prepack": "pnpm build && publint && attw --pack ."
+  },
+  "dependencies": {
+    "@expo/config": "57.0.9",
+    "@expo/osascript": "2.7.1",
+    "@expo/spawn-async": "1.8.0",
+    "c12": "4.0.0-rc.1",
+    "commander": "15.0.0",
+    "picocolors": "1.1.1",
+    "pixelmatch": "7.2.0",
+    "pngjs": "7.0.0",
+    "sharp": "0.35.4",
+    "zod": "4.5.4"
+  },
+  "peerDependencies": {
+    "expo-updates": ">=0.27.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-updates": { "optional": true }
+  },
+  "devDependencies": {
+    "@types/pixelmatch": "7.1.0",
+    "@types/pngjs": "6.0.5",
+    "execa": "10.0.1",
+    "memfs": "4.71.0",
+    "tsdown": "0.23.0"
+  }
+}

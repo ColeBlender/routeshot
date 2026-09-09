@@ -1,0 +1,21 @@
+{
+  "printWidth": 100,
+  "tabWidth": 2,
+  "singleQuote": true,
+  "bracketSameLine": true,
+  "trailingComma": "es5",
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/vendor/**",
+    "**/.expo/**",
+    "**/ios/**",
+    "**/android/**",
+    "**/.routeshot/**",
+    "pnpm-lock.yaml"
+  ],
+  "sortImports": {
+    "groups": [["builtin", "external"], ["internal", "subpath"], ["parent", "sibling", "index"], "unknown"],
+    "ignoreCase": false
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.routeshot/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+example/ios/
+example/android/
+example/.expo/

@@ -1,0 +1,28 @@
+{
+  "name": "routeshot-monorepo",
+  "private": true,
+  "packageManager": "pnpm@10.25.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "pnpm -r --filter './packages/*' run build",
+    "typecheck": "pnpm -r --filter './packages/*' run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint --type-aware .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@types/node": "22.20.2",
+    "eslint-plugin-async-protect": "3.1.0",
+    "oxfmt": "0.67.0",
+    "oxlint": "1.82.0",
+    "oxlint-config-universe": "0.2.0",
+    "oxlint-tsgolint": "7.0.2001",
+    "publint": "0.3.24",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}
