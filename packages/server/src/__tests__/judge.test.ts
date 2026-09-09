@@ -84,6 +84,25 @@ describe('buildJudgeRequest', () => {
 });
 
 describe('judgeRouteAsync', () => {
+  it('drops quotes wrapping the whole caption but keeps a quoted word at the start', async () => {
+    const captionFor = async (caption: string): Promise<string> =>
+      (
+        await judgeRouteAsync(
+          input(),
+          deps({
+            anthropic: fakeJudge(() => ({
+              parsedOutput: { score: 80, defect: 'overlap', region: null, caption },
+            })),
+          })
+        )
+      ).caption;
+
+    expect(await captionFor('"badge covers the caption"')).toBe('badge covers the caption');
+    expect(await captionFor("'Saved' button overlaps the caption")).toBe(
+      "'Saved' button overlaps the caption"
+    );
+  });
+
   it('maps a structured answer onto a verdict', async () => {
     const verdict = await judgeRouteAsync(
       input(),

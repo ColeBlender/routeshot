@@ -185,7 +185,9 @@ async function judgeRouteResultAsync(
       defect: output.defect,
       region: output.region ?? undefined,
       // Sonnet occasionally closes the caption with a stray quote; it would land in a PR comment.
-      caption: output.caption.trim().replace(/^['"]+|['"]+$/g, ''),
+      // Models sometimes wrap the whole caption in quotes. Only a matching pair goes; a caption
+      // that merely starts with a quoted word ('Saved' button ...) keeps it.
+      caption: output.caption.trim().replace(/^(['"])(.*)\1$/s, '$2'),
     },
     spent: true,
   };
