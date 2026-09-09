@@ -42,6 +42,12 @@ export async function uploadRunAsync(options: UploadRunOptions): Promise<UploadR
     }
     const bytes = await readFile(join(options.dir, entry.file));
     form.append(entry.file, new Blob([bytes], { type: 'image/png' }), entry.file);
+    // The code behind the screen travels with it: the server's judge reads it the same way the
+    // CLI's does. Without it the server can only look at pixels.
+    if (entry.code !== undefined) {
+      const code = await readFile(join(options.dir, entry.code));
+      form.append(entry.code, new Blob([code], { type: 'text/plain' }), entry.code);
+    }
   }
 
   const response = await fetch(absolute(options.serverUrl, '/runs'), {

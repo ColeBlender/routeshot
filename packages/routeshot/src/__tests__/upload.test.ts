@@ -27,7 +27,7 @@ const RUN: CaptureRun = {
     {
       route: '/',
       file: 'index.png',
-      code: undefined,
+      code: 'index.code.txt',
       status: 'captured',
       reason: undefined,
       settledMs: 400,
@@ -68,9 +68,10 @@ afterEach(() => {
 });
 
 describe('uploadRunAsync', () => {
-  it('posts index.json plus one part per captured route, keyed by file name', async () => {
+  it('posts index.json plus the screenshot and code bundle per captured route, keyed by file name', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'routeshot-upload-'));
     await writeFile(join(dir, 'index.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    await writeFile(join(dir, 'index.code.txt'), '// app/index.tsx\nexport default 1;\n');
     const fetch = stubFetch({
       'POST /runs': { status: 201, body: { id: 'srv-1', url: '/runs/srv-1' } },
     });
@@ -85,17 +86,23 @@ describe('uploadRunAsync', () => {
     if (!(form instanceof FormData)) {
       throw new Error('expected a multipart body');
     }
-    expect([...form.keys()]).toEqual(['index.json', 'index.png']);
+    expect([...form.keys()]).toEqual(['index.json', 'index.png', 'index.code.txt']);
     const part = form.get('index.png');
     if (!(part instanceof Blob)) {
       throw new Error('expected the screenshot part to be a Blob');
     }
     expect(await part.bytes()).toEqual(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+    const code = form.get('index.code.txt');
+    if (!(code instanceof Blob)) {
+      throw new Error('expected the code part to be a Blob');
+    }
+    expect(await code.text()).toBe('// app/index.tsx\nexport default 1;\n');
   });
 
   it('throws with the server status and body when the upload is rejected', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'routeshot-upload-'));
     await writeFile(join(dir, 'index.png'), Buffer.from([0x89]));
+    await writeFile(join(dir, 'index.code.txt'), '');
     stubFetch({ 'POST /runs': { status: 401, body: { error: 'bad token' } } });
 
     await expect(uploadRunAsync({ ...SERVER, dir, run: RUN })).rejects.toMatchObject({
