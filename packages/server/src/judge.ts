@@ -141,32 +141,52 @@ function toImageSource(png: Uint8Array): {
  * result and is never rendered as green.
  */
 export async function judgeRouteAsync(input: JudgeInput, deps: JudgeDeps): Promise<Verdict> {
+  return (await judgeRouteResultAsync(input, deps)).verdict;
+}
+
+/** `spent` is false when the call never produced an answer, so its quota reservation is refundable. */
+interface JudgeRouteResult {
+  verdict: Verdict;
+  spent: boolean;
+}
+
+async function judgeRouteResultAsync(
+  input: JudgeInput,
+  deps: JudgeDeps
+): Promise<JudgeRouteResult> {
   const signal = AbortSignal.timeout(deps.timeoutMs);
   let response: JudgeResponse;
   try {
     response = await deps.anthropic.parseAsync(buildJudgeRequest(input, deps.model), signal);
   } catch (error) {
     if (signal.aborted) {
-      return unverified(input.route, 'judge timed out');
+      return { verdict: unverified(input.route, 'judge timed out'), spent: false };
     }
-    return unverified(
-      input.route,
-      `judge unavailable: ${error instanceof Error ? error.message : String(error)}`
-    );
+    return {
+      verdict: unverified(
+        input.route,
+        `judge unavailable: ${error instanceof Error ? error.message : String(error)}`
+      ),
+      spent: false,
+    };
   }
 
   const output = parseJudgeOutput(response);
   if (output === undefined) {
-    return unverified(input.route, 'judge returned unparseable output');
+    // The model answered, so the tokens are gone even though the answer is useless.
+    return { verdict: unverified(input.route, 'judge returned unparseable output'), spent: true };
   }
 
   return {
-    route: input.route,
-    level: levelForScore(output.score, output.defect, deps.thresholds),
-    score: output.score,
-    defect: output.defect,
-    region: output.region ?? undefined,
-    caption: output.caption,
+    verdict: {
+      route: input.route,
+      level: levelForScore(output.score, output.defect, deps.thresholds),
+      score: output.score,
+      defect: output.defect,
+      region: output.region ?? undefined,
+      caption: output.caption,
+    },
+    spent: true,
   };
 }
 
@@ -209,6 +229,7 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
   }
 
   const verdicts: Verdict[] = [];
+  let refundable = 0;
   let next = 0;
   const workers = Array.from({ length: Math.min(deps.concurrency, inputs.length) }, async () => {
     for (;;) {
@@ -217,21 +238,32 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
       if (input === undefined) {
         return;
       }
-      verdicts[index] =
-        index < allowed
-          ? await judgeRouteAsync(input, deps)
-          : unverified(input.route, 'daily judge cap reached');
+      if (index >= allowed) {
+        verdicts[index] = unverified(input.route, 'daily judge cap reached');
+        continue;
+      }
+      const result = await judgeRouteResultAsync(input, deps);
+      verdicts[index] = result.verdict;
+      if (!result.spent) {
+        refundable += 1;
+      }
     }
   });
   await Promise.all(workers);
+
+  // A timeout or a transport failure bought nothing, so hand the reservation back rather than
+  // letting one bad minute eat the rest of the day's budget.
+  if (deps.quota && refundable > 0) {
+    await deps.quota.recordAsync(day, -refundable);
+  }
   return verdicts;
 }
 
 /**
  * Adapts the Anthropic SDK to `JudgeModel`. SDK 0.124 exposes structured output on the stable
  * Messages API as `output_config.format` plus a `parsed_output` property; if the account or API
- * version rejects it, the flag flips and every later call uses plain `create` with the same
- * prompt, which already demands JSON-only output.
+ * version rejects the parameter itself, the flag flips and every later call uses plain `create`
+ * with the same prompt, which already demands JSON-only output.
  */
 export function createAnthropicJudgeModel(client: Anthropic): JudgeModel {
   let structuredOutputSupported = true;
@@ -253,7 +285,7 @@ export function createAnthropicJudgeModel(client: Anthropic): JudgeModel {
           );
           return { parsedOutput: message.parsed_output, text: textOf(message.content) };
         } catch (error) {
-          if (signal.aborted || !isBadRequest(error)) {
+          if (signal.aborted || !isStructuredOutputUnsupported(error)) {
             throw error;
           }
           structuredOutputSupported = false;
@@ -266,8 +298,34 @@ export function createAnthropicJudgeModel(client: Anthropic): JudgeModel {
   };
 }
 
-function isBadRequest(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'status' in error && error.status === 400;
+/**
+ * Only a 400 that names the structured-output parameter proves the endpoint cannot do structured
+ * output. Every other 400 is about the one request that made it (an oversized image, an unknown
+ * model), so it is rethrown into an unverified verdict for that route and the latch stays closed.
+ */
+function isStructuredOutputUnsupported(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('status' in error) || error.status !== 400) {
+    return false;
+  }
+  const haystack = [
+    error instanceof Error ? error.message : '',
+    'error' in error ? safeStringify(error.error) : '',
+  ]
+    .join(' ')
+    .toLowerCase();
+  return (
+    haystack.includes('output_config') ||
+    haystack.includes('output_format') ||
+    haystack.includes('structured output')
+  );
+}
+
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return '';
+  }
 }
 
 function textOf(content: { type: string; text?: string }[]): string {

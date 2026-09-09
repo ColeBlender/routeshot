@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createApp, type AppDeps } from '../app.js';
 import { DEFAULT_JUDGE_MODEL, type JudgeDeps, type JudgeModel } from '../judge.js';
 import { silentLogger } from '../log.js';
-import { MemoryStore } from '../store.js';
+import { MemoryStore, type Store } from '../store.js';
 import type { CaptureEntry, CaptureRun, CompareReport } from '../types.js';
 import { fakeJudge, makePng, makeRun } from './fixtures.js';
 
@@ -297,6 +297,57 @@ describe('GET /compare', () => {
 
     expect(second.id).toBe(first.id);
     expect(judge.requests).toHaveLength(1);
+  });
+
+  it('serves the id that won when two compares of the same triple race', async () => {
+    const attempted: string[] = [];
+    // Both requests miss the cache and mint their own id, which is exactly the shape of two
+    // concurrent compares: only one of the two rows can survive the unique index.
+    const racing: Store = {
+      saveRunAsync: async (run, files) => {
+        await store.saveRunAsync(run, files);
+      },
+      getRunAsync: async (id) => await store.getRunAsync(id),
+      listRunsAsync: async (query) => await store.listRunsAsync(query),
+      putFilesAsync: async (ownerId, files) => {
+        await store.putFilesAsync(ownerId, files);
+      },
+      getFileAsync: async (ownerId, name) => await store.getFileAsync(ownerId, name),
+      deleteFilesAsync: async (ownerId) => {
+        await store.deleteFilesAsync(ownerId);
+      },
+      saveCompareAsync: async (compare) => {
+        attempted.push(compare.id);
+        return await store.saveCompareAsync(compare);
+      },
+      getCompareAsync: async (id) => await store.getCompareAsync(id),
+      findCompareAsync: async () => undefined,
+      countJudgeCallsAsync: async (day) => await store.countJudgeCallsAsync(day),
+      recordJudgeCallsAsync: async (day, count) => {
+        await store.recordJudgeCallsAsync(day, count);
+      },
+    };
+    const app = build({ store: racing });
+    const [baseline, candidate] = await seedAsync(app);
+    const url = `/compare?baseline=${baseline}&candidate=${candidate}`;
+
+    const first = (await (await app.request(url, { headers: AUTH })).json()) as { id: string };
+    const second = (await (await app.request(url, { headers: AUTH })).json()) as {
+      id: string;
+      url: string;
+    };
+
+    const [winner, loser] = attempted;
+    expect(attempted).toHaveLength(2);
+    expect(loser).not.toBe(winner);
+    expect(first.id).toBe(winner);
+    expect(second.id).toBe(winner);
+    expect(second.url).toBe(`/r/${winner}`);
+    // The id both callers were handed resolves, masks and all.
+    expect((await app.request(`/r/${winner}`)).status).toBe(200);
+    expect((await app.request(`/r/${winner}/files/index.png`)).status).toBe(200);
+    // The loser's masks are not left behind under an id no row points at.
+    expect((await app.request(`/r/${loser}/files/index.png`)).status).toBe(404);
   });
 
   it('404s an unknown baseline and rejects a threshold outside 0..1', async () => {

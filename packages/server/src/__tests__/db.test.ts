@@ -68,7 +68,7 @@ describe.skipIf(databaseUrl === undefined)('PostgresStore', () => {
       summary: { total: 0, unchanged: 0, changed: 0, added: 0, removed: 0, unverified: 0 },
       verdicts: undefined,
     };
-    await store.saveCompareAsync({
+    const saved = await store.saveCompareAsync({
       id: 'cmp-a',
       baselineId: 'run-a',
       candidateId: 'run-a',
@@ -76,9 +76,27 @@ describe.skipIf(databaseUrl === undefined)('PostgresStore', () => {
       report,
       createdAt: new Date().toISOString(),
     });
+    expect(saved.id).toBe('cmp-a');
     expect((await store.getCompareAsync('cmp-a'))?.report.threshold).toBe(0);
     expect((await store.findCompareAsync('run-a', 'run-a', 0))?.id).toBe('cmp-a');
     expect(await store.findCompareAsync('run-a', 'run-a', 0.5)).toBeUndefined();
+
+    // Losing the race on the unique index gives back the row that won, not nothing.
+    const loser = await store.saveCompareAsync({
+      id: 'cmp-b',
+      baselineId: 'run-a',
+      candidateId: 'run-a',
+      threshold: 0,
+      report,
+      createdAt: new Date().toISOString(),
+    });
+    expect(loser.id).toBe('cmp-a');
+    expect(await store.getCompareAsync('cmp-b')).toBeUndefined();
+
+    await store.putFilesAsync('cmp-b', [{ name: 'index.png', bytes: png }]);
+    await store.deleteFilesAsync('cmp-b');
+    expect(await store.getFileAsync('cmp-b', 'index.png')).toBeUndefined();
+    expect(await store.getFileAsync('run-a', 'index.png')).toEqual(Buffer.from(png));
 
     await store.recordJudgeCallsAsync('2026-09-09', 3);
     await store.recordJudgeCallsAsync('2026-09-09', 2);

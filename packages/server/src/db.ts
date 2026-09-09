@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import postgres from 'postgres';
 
+import { ServerError } from './errors.js';
 import type { RunSummary, Store, StoredCompare, StoredFile, StoredRun } from './store.js';
 import type { CaptureRun, CompareReport } from './types.js';
 
@@ -13,7 +14,7 @@ export function createSql(databaseUrl: string): Sql {
 }
 
 /**
- * Applied on every boot. The file is copied next to the bundle by tsdown so `dist/main.js` can
+ * Applied on every boot. The file is copied next to the bundle by tsdown so `dist/main.mjs` can
  * read it; keeping the DDL in .sql (not a template literal) means it stays greppable and can be
  * piped into psql by hand.
  */
@@ -129,14 +130,27 @@ export class PostgresStore implements Store {
     return rows[0]?.bytes;
   }
 
-  async saveCompareAsync(compare: StoredCompare): Promise<void> {
-    await this.sql`
+  async deleteFilesAsync(ownerId: string): Promise<void> {
+    await this.sql`DELETE FROM files WHERE owner_id = ${ownerId}`;
+  }
+
+  async saveCompareAsync(compare: StoredCompare): Promise<StoredCompare> {
+    // The no-op `SET id = compares.id` is what makes RETURNING hand back the row that won when a
+    // concurrent compare of the same triple got there first; DO NOTHING would return nothing and
+    // leave the caller serving an id that was never stored.
+    const rows = await this.sql<CompareRow[]>`
       INSERT INTO compares (id, baseline_id, candidate_id, threshold, report, created_at)
       VALUES (${compare.id}, ${compare.baselineId}, ${compare.candidateId}, ${compare.threshold},
               ${this.sql.json(asJson(compare.report))},
               ${compare.createdAt})
-      ON CONFLICT (baseline_id, candidate_id, threshold) DO NOTHING
+      ON CONFLICT (baseline_id, candidate_id, threshold) DO UPDATE SET id = compares.id
+      RETURNING id, baseline_id, candidate_id, threshold, report, created_at
     `;
+    const row = rows[0];
+    if (row === undefined) {
+      throw new ServerError('STORAGE', 'saving the compare returned no row');
+    }
+    return toStoredCompare(row);
   }
 
   async getCompareAsync(id: string): Promise<StoredCompare | undefined> {

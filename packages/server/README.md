@@ -31,6 +31,10 @@ pnpm --filter @routeshot/server build
 pnpm --filter @routeshot/server dev
 ```
 
+Leaving `DATABASE_URL` empty is supported outside production: the server keeps runs, reports and
+PNGs in process memory and says so at boot, so `pnpm dev` needs no Postgres. Everything is lost on
+restart. `NODE_ENV=production` still refuses to start without a database.
+
 `src/schema.sql` is applied at every boot with `CREATE TABLE IF NOT EXISTS`, so there is no
 migration step for v1.
 

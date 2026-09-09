@@ -240,7 +240,7 @@ export function createApp(deps: AppDeps) {
     // Masks first: the report row is what makes the URL live, and it must never point at
     // images that are not there yet.
     await deps.store.putFilesAsync(id, diffFiles);
-    await deps.store.saveCompareAsync({
+    const saved = await deps.store.saveCompareAsync({
       id,
       baselineId,
       candidateId,
@@ -249,7 +249,13 @@ export function createApp(deps: AppDeps) {
       createdAt: deps.now().toISOString(),
     });
 
-    return c.json({ ...report, id, url: `/r/${id}` });
+    if (saved.id !== id) {
+      // A concurrent compare of the same triple won: only its row exists, so serve its id and drop
+      // the masks written under the id nothing points at.
+      await deps.store.deleteFilesAsync(id);
+    }
+
+    return c.json({ ...saved.report, id: saved.id, url: `/r/${saved.id}` });
   });
 
   app.get('/r/:compareId', async (c) => {

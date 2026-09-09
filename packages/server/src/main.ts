@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { serve } from '@hono/node-server';
 
 import { createApp } from './app.js';
-import { PostgresStore, applySchemaAsync, createSql } from './db.js';
+import { PostgresStore, applySchemaAsync, createSql, type Sql } from './db.js';
 import { ServerError } from './errors.js';
 import {
   DEFAULT_JUDGE_MODEL,
@@ -12,7 +12,7 @@ import {
   type JudgeDeps,
 } from './judge.js';
 import { Log } from './log.js';
-import type { Store } from './store.js';
+import { MemoryStore, type Store } from './store.js';
 
 const VERSION = '0.1.0';
 
@@ -65,11 +65,27 @@ function buildJudgeDeps(store: Store): JudgeDeps | undefined {
   };
 }
 
+/**
+ * Production always needs a database. Locally, an unset DATABASE_URL falls back to process memory
+ * so `pnpm dev` runs with nothing installed; every run and report dies with the process.
+ */
+async function openStoreAsync(): Promise<{ store: Store; sql: Sql | undefined }> {
+  const databaseUrl = process.env['DATABASE_URL'];
+  if (databaseUrl === undefined || databaseUrl === '') {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new ServerError('CONFIG', 'DATABASE_URL is required');
+    }
+    Log.warn('DATABASE_URL is not set, storing runs and reports in memory: nothing persists');
+    return { store: new MemoryStore(), sql: undefined };
+  }
+  const sql = createSql(databaseUrl);
+  await applySchemaAsync(sql);
+  return { store: new PostgresStore(sql), sql };
+}
+
 async function mainAsync(): Promise<void> {
   const port = numberFromEnv('PORT', 3000);
-  const sql = createSql(required('DATABASE_URL'));
-  await applySchemaAsync(sql);
-  const store = new PostgresStore(sql);
+  const { store, sql } = await openStoreAsync();
 
   const app = createApp({
     store,
@@ -99,7 +115,7 @@ async function mainAsync(): Promise<void> {
         resolve();
       });
     });
-    await sql.end({ timeout: 5 });
+    await sql?.end({ timeout: 5 });
     process.exit(0);
   };
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {

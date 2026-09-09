@@ -44,6 +44,8 @@ export interface StoredFile {
 export interface FileStore {
   putFilesAsync(ownerId: string, files: StoredFile[]): Promise<void>;
   getFileAsync(ownerId: string, name: string): Promise<Uint8Array | undefined>;
+  /** Drops every file under one owner: the diff masks of a compare that lost the save race. */
+  deleteFilesAsync(ownerId: string): Promise<void>;
 }
 
 export interface Store extends FileStore {
@@ -54,7 +56,12 @@ export interface Store extends FileStore {
     branch: string | undefined;
     limit: number;
   }): Promise<RunSummary[]>;
-  saveCompareAsync(compare: StoredCompare): Promise<void>;
+  /**
+   * First writer wins. Returns the row that is actually stored, which is the earlier one when a
+   * concurrent compare of the same (baseline, candidate, threshold) already saved: the caller has
+   * to serve that id, because its own id was never persisted and would 404.
+   */
+  saveCompareAsync(compare: StoredCompare): Promise<StoredCompare>;
   getCompareAsync(id: string): Promise<StoredCompare | undefined>;
   /** The cache lookup for `GET /compare`: the same three inputs always give the same report. */
   findCompareAsync(
@@ -121,8 +128,25 @@ export class MemoryStore implements Store {
     return this.files.get(`${ownerId}/${name}`);
   }
 
-  async saveCompareAsync(compare: StoredCompare): Promise<void> {
+  async deleteFilesAsync(ownerId: string): Promise<void> {
+    for (const key of this.files.keys()) {
+      if (key.startsWith(`${ownerId}/`)) {
+        this.files.delete(key);
+      }
+    }
+  }
+
+  async saveCompareAsync(compare: StoredCompare): Promise<StoredCompare> {
+    const existing = await this.findCompareAsync(
+      compare.baselineId,
+      compare.candidateId,
+      compare.threshold
+    );
+    if (existing) {
+      return existing;
+    }
     this.compares.set(compare.id, compare);
+    return compare;
   }
 
   async getCompareAsync(id: string): Promise<StoredCompare | undefined> {
