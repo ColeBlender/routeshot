@@ -1,0 +1,103 @@
+name: routeshot
+description: Screenshot every expo-router route on the iOS Simulator, diff against a baseline, and comment on the PR.
+author: Cole Blender
+branding:
+  icon: camera
+  color: purple
+inputs:
+  project-root:
+    description: Directory of the Expo app (contains app.json and routeshot.config).
+    required: false
+    default: .
+  server-url:
+    description: Base URL of the routeshot report server.
+    required: true
+  server-token:
+    description: Bearer token for the report server.
+    required: true
+  label:
+    description: Run label. Defaults to the branch name.
+    required: false
+    default: ''
+  baseline:
+    description: Baseline run id. Defaults to the latest run uploaded from the default branch.
+    required: false
+    default: ''
+  update-url:
+    description: EAS update manifest URL to load before capturing (runner build required).
+    required: false
+    default: ''
+  device:
+    description: Simulator device name.
+    required: false
+    default: ''
+  github-token:
+    description: Token used to comment on the pull request.
+    required: false
+    default: ${{ github.token }}
+outputs:
+  report-url:
+    description: URL of the hosted report.
+    value: ${{ steps.compare.outputs.report-url }}
+  run-id:
+    description: Id of the uploaded run.
+    value: ${{ steps.capture.outputs.run-id }}
+runs:
+  using: composite
+  steps:
+    - name: Capture
+      id: capture
+      shell: bash
+      working-directory: ${{ inputs.project-root }}
+      env:
+        ROUTESHOT_SERVER_URL: ${{ inputs.server-url }}
+        ROUTESHOT_SERVER_TOKEN: ${{ inputs.server-token }}
+      run: |
+        label="${{ inputs.label }}"
+        if [ -z "$label" ]; then label="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"; fi
+        args=(capture --label "$label" --upload --json)
+        if [ -n "${{ inputs.update-url }}" ]; then args+=(--update-url "${{ inputs.update-url }}"); fi
+        if [ -n "${{ inputs.device }}" ]; then args+=(--device "${{ inputs.device }}"); fi
+        npx --yes routeshot "${args[@]}" > capture.json
+        echo "run-id=$(node -p "require('./capture.json').upload.id")" >> "$GITHUB_OUTPUT"
+    - name: Compare
+      id: compare
+      shell: bash
+      working-directory: ${{ inputs.project-root }}
+      env:
+        ROUTESHOT_SERVER_URL: ${{ inputs.server-url }}
+        ROUTESHOT_SERVER_TOKEN: ${{ inputs.server-token }}
+      run: |
+        baseline="${{ inputs.baseline }}"
+        if [ -z "$baseline" ]; then baseline="main"; fi
+        npx --yes routeshot compare "$baseline" "${{ steps.capture.outputs.run-id }}" --remote --no-fail --json > compare.json
+        echo "report-url=$(node -p "require('./compare.json').url")" >> "$GITHUB_OUTPUT"
+    - name: Comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const report = JSON.parse(fs.readFileSync(path.join('${{ inputs.project-root }}', 'compare.json'), 'utf8'));
+          const s = report.summary;
+          const verdicts = report.verdicts ?? [];
+          const flagged = verdicts.filter((v) => v.level === 'red' || v.level === 'yellow' || v.level === 'unverified');
+          const badge = { red: '🔴', yellow: '🟡', unverified: '⚪', green: '🟢' };
+          const lines = [
+            `**routeshot**: ${s.total} screens. ${s.unchanged} unchanged, ${s.changed} changed, ${s.added} added, ${s.removed} removed, ${s.unverified} unverified.`,
+            '',
+            ...flagged.map((v) => `${badge[v.level]} \`${v.route}\` ${v.caption}`),
+            flagged.length ? '' : 'Nothing looks broken.',
+            `[Open the report](${report.url})`,
+          ];
+          const marker = '<!-- routeshot -->';
+          const body = `${marker}\n${lines.join('\n')}`;
+          const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number });
+          const existing = comments.find((c) => c.body && c.body.startsWith(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+          } else {
+            await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+          }

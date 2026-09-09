@@ -1,0 +1,58 @@
+name: CI
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      - run: pnpm test -- --coverage
+      - run: pnpm build
+      - run: pnpm --filter routeshot exec publint
+      - run: pnpm --filter routeshot exec attw --pack .
+
+  dogfood:
+    # Runs routeshot on its own example app. Manual until the simulator job is proven stable on hosted runners.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Boot simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')).devices;const all=Object.entries(d).filter(([k])=>k.includes('iOS')).flatMap(([,v])=>v);const p=all.find(x=>x.name.includes('iPhone'));console.log(p.udid)")
+          xcrun simctl boot "$udid"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+      - name: Build example app
+        working-directory: example
+        run: |
+          npx expo prebuild --platform ios --no-install
+          npx expo run:ios --no-bundler --device "$SIM_UDID"
+      - name: Capture
+        working-directory: example
+        run: npx routeshot capture --label ci --json > capture.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: routeshot-run
+          path: example/.routeshot
+
+# The dogfood job is also reachable manually.
