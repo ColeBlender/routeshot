@@ -1,11 +1,13 @@
 {
   "name": "routeshot-monorepo",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "pnpm -r --filter './packages/*' run build",
     "typecheck": "pnpm -r --filter './packages/*' run typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
+    "judge:eval": "node --experimental-strip-types scripts/judge-eval.ts",
     "lint": "oxlint --type-aware .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
