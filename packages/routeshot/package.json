@@ -27,8 +27,7 @@
   "scripts": {
     "build": "tsdown",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.expo.json",
-    "test": "vitest run",
-    "prepack": "pnpm build && publint && attw --pack ."
+    "test": "vitest run"
   },
   "dependencies": {
     "@expo/config": "57.0.9",
