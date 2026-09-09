@@ -4,18 +4,29 @@
   "description": "Screenshot every expo-router route, before and after an EAS update, and show what changed.",
   "license": "MIT",
   "author": "Cole Blender",
-  "type": "module",
-  "bin": { "routeshot": "./dist/cli.js" },
-  "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./expo": { "types": "./dist/expo.d.ts", "import": "./dist/expo.js" }
+  "bin": {
+    "routeshot": "./dist/cli.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
+  "type": "module",
   "sideEffects": false,
-  "engines": { "node": ">=22" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./expo": {
+      "types": "./dist/expo.d.ts",
+      "import": "./dist/expo.js",
+      "default": "./dist/expo.js"
+    }
+  },
   "scripts": {
     "build": "tsdown",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.expo.json",
     "test": "vitest run",
     "prepack": "pnpm build && publint && attw --pack ."
   },
@@ -31,17 +42,23 @@
     "sharp": "0.35.4",
     "zod": "4.5.4"
   },
-  "peerDependencies": {
-    "expo-updates": ">=0.27.0"
-  },
-  "peerDependenciesMeta": {
-    "expo-updates": { "optional": true }
-  },
   "devDependencies": {
     "@types/pixelmatch": "7.1.0",
     "@types/pngjs": "6.0.5",
     "execa": "10.0.1",
+    "expo-updates": "57.0.21",
     "memfs": "4.71.0",
     "tsdown": "0.23.0"
+  },
+  "peerDependencies": {
+    "expo-updates": ">=0.27.0"
+  },
+  "peerDependenciesMeta": {
+    "expo-updates": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

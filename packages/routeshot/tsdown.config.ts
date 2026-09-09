@@ -6,6 +6,8 @@ export default defineConfig({
   platform: 'node',
   dts: true,
   clean: true,
+  // package.json points `bin` and `exports` at `dist/*.js`; the package is already `type: module`.
+  fixedExtension: false,
   // `expo` is imported by the app under test (React Native), so it must not pull Node deps in.
   external: ['expo-updates', 'react-native', 'sharp'],
 });

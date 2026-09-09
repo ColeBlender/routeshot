@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "types": [],
+    "jsx": "react-jsx"
+  },
+  "include": ["src/expo.ts"]
+}

@@ -1,5 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "rootDir": "src", "outDir": "dist", "types": ["node"] },
-  "include": ["src"]
+  "include": ["src"],
+  // `src/expo.ts` runs on React Native, not Node. It is checked by tsconfig.expo.json instead:
+  // react-native's declarations (pulled in transitively by expo-updates) replace the global
+  // fetch/FormData/Blob for every file in the program, which breaks the Node-side uploader.
+  "exclude": ["src/expo.ts"]
 }
