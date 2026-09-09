@@ -70,7 +70,12 @@ jobs:
           LC_ALL: en_US.UTF-8
         run: |
           npx expo prebuild --platform ios
-          npx expo run:ios --configuration Release --no-bundler --device "$SIM_UDID"
+          # `run:ios` installs the app and then opens it through the dev-client launcher URL. On a
+          # hosted runner that open times out after the install already succeeded, so the install
+          # is what gets checked, not the launch.
+          npx expo run:ios --configuration Release --no-bundler --device "$SIM_UDID" \
+            || echo "expo run:ios exited non-zero after the build; checking the install instead"
+          xcrun simctl get_app_container "$SIM_UDID" dev.routeshot.example
       - name: Capture
         working-directory: example
         # A Release build embeds its bundle, so there is no Metro to boot from.

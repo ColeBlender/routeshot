@@ -83,7 +83,7 @@ Decisions made while building, and blockers that need Cole. Newest at the bottom
 - Fresh `git clone` into a scratch dir, README quickstart followed literally, three times as fixes landed.
 - Found and fixed: pnpm never linked the `routeshot` bin because `dist/cli.js` did not exist at install
   time (`prepare: tsdown` now builds it during install, and `pnpm build` left the quickstart); `compare
-  before after` failed because refs did not resolve by label; the c12 MODULE_TYPELESS warning on every
+before after` failed because refs did not resolve by label; the c12 MODULE_TYPELESS warning on every
   run (config now loads through jiti); the `pnpm approve-builds` notice for esbuild; the judge stripping
   the opening quote of a caption that starts with a quoted word.
 - Final run on the pushed main: install only, 7/7 captured in 17s, compare by label reports the same
