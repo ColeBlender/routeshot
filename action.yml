@@ -6,7 +6,7 @@ branding:
   color: purple
 inputs:
   project-root:
-    description: Directory of the Expo app (contains app.json and routeshot.config).
+    description: Directory of the Expo app (contains app.json and, optionally, routeshot.config).
     required: false
     default: .
   server-url:
@@ -20,15 +20,19 @@ inputs:
     required: false
     default: ''
   baseline:
-    description: Baseline run id. Defaults to the latest run uploaded from the default branch.
+    description: Baseline run id or branch name on the server. Defaults to the repository's default branch.
     required: false
     default: ''
   update-url:
-    description: EAS update manifest URL to load before capturing (runner build required).
+    description: EAS update manifest URL to load before capturing.
     required: false
     default: ''
   device:
     description: Simulator device name.
+    required: false
+    default: ''
+  dev-client:
+    description: '"true" to boot a development build from the dev server, "false" for a release build. Defaults to detection from package.json.'
     required: false
     default: ''
   github-token:
@@ -45,7 +49,16 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Capture
+    - name: Build routeshot
+      # Built from the action's own checkout, so the action works before and after any npm publish.
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        corepack enable
+        pnpm install --frozen-lockfile --filter routeshot
+        pnpm --filter routeshot build
+        echo "ROUTESHOT_BIN=${{ github.action_path }}/packages/routeshot/dist/cli.js" >> "$GITHUB_ENV"
+    - name: Capture and upload
       id: capture
       shell: bash
       working-directory: ${{ inputs.project-root }}
@@ -58,7 +71,9 @@ runs:
         args=(capture --label "$label" --upload --json)
         if [ -n "${{ inputs.update-url }}" ]; then args+=(--update-url "${{ inputs.update-url }}"); fi
         if [ -n "${{ inputs.device }}" ]; then args+=(--device "${{ inputs.device }}"); fi
-        npx --yes routeshot "${args[@]}" > capture.json
+        if [ "${{ inputs.dev-client }}" = "true" ]; then args+=(--dev-client); fi
+        if [ "${{ inputs.dev-client }}" = "false" ]; then args+=(--no-dev-client); fi
+        node "$ROUTESHOT_BIN" "${args[@]}" > capture.json
         echo "run-id=$(node -p "require('./capture.json').upload.id")" >> "$GITHUB_OUTPUT"
     - name: Compare
       id: compare
@@ -69,8 +84,8 @@ runs:
         ROUTESHOT_SERVER_TOKEN: ${{ inputs.server-token }}
       run: |
         baseline="${{ inputs.baseline }}"
-        if [ -z "$baseline" ]; then baseline="main"; fi
-        npx --yes routeshot compare "$baseline" "${{ steps.capture.outputs.run-id }}" --remote --no-fail --json > compare.json
+        if [ -z "$baseline" ]; then baseline="${{ github.event.repository.default_branch }}"; fi
+        node "$ROUTESHOT_BIN" compare "$baseline" "${{ steps.capture.outputs.run-id }}" --remote --no-fail --json > compare.json
         echo "report-url=$(node -p "require('./compare.json').url")" >> "$GITHUB_OUTPUT"
     - name: Comment
       if: github.event_name == 'pull_request'
@@ -83,13 +98,13 @@ runs:
           const report = JSON.parse(fs.readFileSync(path.join('${{ inputs.project-root }}', 'compare.json'), 'utf8'));
           const s = report.summary;
           const verdicts = report.verdicts ?? [];
-          const flagged = verdicts.filter((v) => v.level === 'red' || v.level === 'yellow' || v.level === 'unverified');
-          const badge = { red: '🔴', yellow: '🟡', unverified: '⚪', green: '🟢' };
+          const flagged = verdicts.filter((v) => v.level !== 'green');
+          const badge = { red: '🔴', yellow: '🟡', unverified: '⚪' };
           const lines = [
             `**routeshot**: ${s.total} screens. ${s.unchanged} unchanged, ${s.changed} changed, ${s.added} added, ${s.removed} removed, ${s.unverified} unverified.`,
             '',
             ...flagged.map((v) => `${badge[v.level]} \`${v.route}\` ${v.caption}`),
-            flagged.length ? '' : 'Nothing looks broken.',
+            flagged.length ? '' : (s.changed ? 'Changed screens look fine.' : 'Nothing changed.'),
             `[Open the report](${report.url})`,
           ];
           const marker = '<!-- routeshot -->';
