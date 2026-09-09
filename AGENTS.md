@@ -4,6 +4,7 @@ Screenshot every expo-router route, before and after an EAS update, and show wha
 This file is the map for humans and coding agents alike. Keep it accurate; keep it short.
 
 ## Layout
+
 - `packages/routeshot/` the npm package. Three entry points built by tsdown:
   - `src/cli.ts` the `routeshot` binary (`capture`, `compare`)
   - `src/index.ts` the programmatic API
@@ -13,12 +14,14 @@ This file is the map for humans and coding agents alike. Keep it accurate; keep 
 - `action.yml` composite GitHub Action that runs the CLI on a macOS runner and comments on the PR.
 
 ## How the pieces talk
+
 CLI discovers routes with expo-router's own parser (vendored under `src/vendor/`), drives the iOS
 Simulator through `xcrun simctl` (ported from `@expo/cli` and Expo Orbit), deep-links into each
 route, waits for the screen to stop changing, screenshots it. `compare` diffs two runs with
 pixelmatch. `--upload` sends a run to the server; the server diffs, judges, and hosts the report.
 
 ## Conventions (Expo house style)
+
 - Every promise-returning function ends in `Async`. Lint-enforced.
 - Throw, never log-and-return. `RouteshotError` carries a code; the CLI maps it to an exit status.
 - Human output on stderr through `Log`. `--json` owns stdout. No `console.log`.
@@ -29,6 +32,7 @@ pixelmatch. `--upload` sends a run to the server; the server diffs, judges, and 
 - Commits: `[routeshot] Title`, `[server] Title`, `[example] Title`. One idea per commit.
 
 ## Commands
+
 ```
 pnpm check                 # lint, format check, typecheck, test, build
 pnpm --filter routeshot test
@@ -37,4 +41,5 @@ cd example && npx expo run:ios
 ```
 
 ## Things that are deliberately not here
+
 MCP server, Android adapter (the `Simulator` interface is the seam), auth-gated routes, `init` command.

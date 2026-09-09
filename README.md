@@ -72,6 +72,7 @@ baselines by branch, and runs the judge with your `ANTHROPIC_API_KEY`. Deploy it
 ## Limitations
 
 <!-- numbers below are filled from the measured spike runs -->
+
 - iOS only. The `Simulator` interface is the seam for an `adb` adapter.
 - Dynamic routes (`[id]`) need params in `routeshot.config.ts`; without them the route is skipped loudly and the exact snippet to paste is printed.
 - Screens behind authentication capture whatever the app shows when opened cold.
