@@ -12,6 +12,11 @@ export interface Route {
   params: Record<string, string> | undefined;
   /** Path of the route file relative to the app directory, for messages. */
   sourceFile: string;
+  /**
+   * The route as expo-router names it on disk, before params were substituted: `/users/[id]`.
+   * Same as `pathname` for static routes. Config (`routes.params`, `routes.ignore`) keys off this.
+   */
+  template?: string;
 }
 
 export interface SimulatorDevice {
@@ -23,7 +28,10 @@ export interface SimulatorDevice {
 }
 
 export interface LaunchOptions {
-  /** Launch arguments passed to the process. The `routeshot/expo` hook reads `--routeshot-update-url`. */
+  /**
+   * Launch arguments passed to the process. `--routeshot-update-url` is passed for a future
+   * native shim; JS reads the update URL from the deep link instead (see `capture.ts`).
+   */
   args?: string[];
   env?: Record<string, string>;
 }
@@ -41,6 +49,13 @@ export interface Simulator {
   setAppearanceAsync(udid: string, appearance: 'light' | 'dark'): Promise<void>;
   /** Freezes clock/battery/signal so they never show up as diffs. */
   overrideStatusBarAsync(udid: string): Promise<void>;
+  /**
+   * Pre-approves `scheme://` links for `bundleId` so iOS never shows the "Open in App?" sheet
+   * that would otherwise be the content of every screenshot.
+   */
+  approveUrlSchemeAsync(udid: string, scheme: string, bundleId: string): Promise<void>;
+  /** Marks expo-dev-menu's first-launch onboarding as seen so it never covers a screen. */
+  dismissDevMenuOnboardingAsync(udid: string, bundleId: string): Promise<void>;
 }
 
 export type CaptureStatus = 'captured' | 'skipped' | 'failed';
@@ -103,6 +118,15 @@ export interface CompareReport {
   candidate: { id: string; label: string };
   threshold: number;
   routes: RouteDiff[];
-  summary: { total: number; unchanged: number; changed: number; added: number; removed: number; unverified: number };
+  summary: {
+    total: number;
+    unchanged: number;
+    changed: number;
+    added: number;
+    removed: number;
+    unverified: number;
+  };
+  /** Directory the diff images and the report were written to. */
+  outDir: string | undefined;
   verdicts: Verdict[] | undefined;
 }
