@@ -2,11 +2,13 @@
 
 Decisions made while building, and blockers that need Cole. Newest at the bottom.
 
-## Blockers needing Cole
+## Blockers needing Cole (status 2026-09-09 13:30 PT)
 
-- [ ] `eas login` on this machine (EAS update-group mode spike cannot run without it). Everything else built around it; the flag + hook + local update-server fallback are testable offline.
-- [ ] Railway project + Postgres for the report server (I can create via MCP once you say go).
-- [ ] `ANTHROPIC_API_KEY` for the judge (server env var). Local dev reads `.env`.
+- [ ] `eas login` + `eas init` in example/ (real projectId for updates.url). Then `eas update --branch routeshot` twice and `routeshot capture --update-url <manifest>` on the dev client proves EAS update-group mode. The dev-client launcher loads a manifest URL directly, so no anti-bricking flag is needed on that path; the `routeshot/expo` hook + runner profile stay for release runner builds and are unit-tested only.
+- [ ] Railway: `railway link` a new project, then `railway config apply` (needs CLI >= 5.42.1; installed 5.26.1) reads `.railway/railway.ts`. Set ROUTESHOT_TOKEN and ANTHROPIC_API_KEY with `railway variables --set` before the first deploy.
+- [ ] `ANTHROPIC_API_KEY`: in `packages/server/.env` locally, then `pnpm judge:eval` scores the thresholds against the labeled example screens and the numbers go in the README. Nothing has been judged by the model yet; every verdict so far is `unverified` by design.
+- [ ] Decide when the repo goes public and gets the `v1` tag (README references `@main` until then).
+- [ ] Run the manual `dogfood` workflow once (Actions > CI > Run workflow) to see whether hosted macOS runners are pixel-identical to this Mac.
 
 ## Decisions
 
