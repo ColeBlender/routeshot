@@ -1,0 +1,27 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "routeshot": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "routeshot",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "ROUTESHOT_UPDATE_OVERRIDE": "1"
+      }
+    }
+  },
+  "submit": {}
+}
