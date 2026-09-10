@@ -32,7 +32,7 @@
     "react-native-screens": "~4.26.0",
     "react-native-web": "~0.21.0",
     "react-native-worklets": "0.10.1",
-    "routeshot": "workspace:*"
+    "routeshot": "*"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

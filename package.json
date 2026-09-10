@@ -1,6 +1,10 @@
 {
   "name": "routeshot-monorepo",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "example"
+  ],
   "type": "module",
   "scripts": {
     "build": "pnpm -r --filter './packages/*' run build",
@@ -26,6 +30,9 @@
     "railway": "^3.11.0",
     "typescript": "6.0.3",
     "vitest": "5.0.0"
+  },
+  "overrides": {
+    "react-native": "0.86.3"
   },
   "engines": {
     "node": ">=22"
