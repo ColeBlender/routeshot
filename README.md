@@ -2,13 +2,13 @@
 
 Catches broken screens in your Expo app before you ship them.
 
-Add one line to your test script. Every time it runs, routeshot uses an AI model to:
+Add one line to your test script. Every time it runs, routeshot will:
 
 1. Figure out which screens your change touched. ([how](docs/details.md#how-it-works))
 2. Open each of those screens on the iOS Simulator and screenshot it.
-3. Read the screenshot next to the code that drew it, and check that everything the code says
-   should be on screen is there, not cut off, not pushed off the edge, not drawn on top of
-   something else. ([what it catches](docs/details.md#what-the-numbers-look-like))
+3. Hand the screenshot and the code that drew it to an AI model, which checks that everything
+   the code says should be on screen is there, not cut off, not pushed off the edge, not drawn
+   on top of something else. ([what it catches](docs/details.md#what-the-numbers-look-like))
 
 A broken screen fails the test, the same way a failing unit test does. No screenshots to approve,
 nothing to maintain.
@@ -23,7 +23,8 @@ Terminal 1: clone, install, build the example app. Leave it running when it fini
 Metro serving the app.
 
 ```sh
-git clone https://github.com/ColeBlender/routeshot && cd routeshot && npm install && cd example && npx expo run:ios
+git clone https://github.com/ColeBlender/routeshot && cd routeshot && \
+  npm install && cd example && npx expo run:ios
 ```
 
 Terminal 2: check every screen.
