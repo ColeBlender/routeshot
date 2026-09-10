@@ -45,8 +45,10 @@ Terminal 2 again:
 npx routeshot capture --judge --open
 ```
 
-5 red, and the report opens with each broken screen marked up. Here is that report, hosted:
-https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
+5 red, and the report opens with each broken screen marked up. Not on a Mac? Here are the two
+reports, hosted:
+[all 7 screens green](https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w)
+and [5 broken](https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w).
 
 Options, the GitHub Action, limitations, and how it works: [docs/details.md](docs/details.md).
 
