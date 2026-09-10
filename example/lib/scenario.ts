@@ -2,7 +2,8 @@
  * Scenario switch for the routeshot judge eval.
  *
  * `EXPO_PUBLIC_ROUTESHOT_SCENARIO` is inlined by Metro at bundle time, so switching
- * scenarios needs a Metro restart (`npx expo start --clear`) but never a native rebuild.
+ * scenarios needs a Metro restart but never a native rebuild. Metro keys its transform cache on
+ * `EXPO_PUBLIC_*` values, so no `--clear` is needed (verified: baseline then broken, 5 red).
  *
  *   baseline  the app as it should look (every route GREEN against itself)
  *   benign    real but harmless changes (routes should read as CHANGED, not broken)

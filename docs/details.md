@@ -44,7 +44,7 @@ flowchart LR
   its bundle URL through the same `exp+<slug>://expo-development-client/?url=` launcher link the
   EAS dashboard's QR code encodes, because the dev launcher drops any other deep link it starts
   with; the dev menu's floating button and onboarding sheet are switched off through its own
-  defaults keys. Then each route is opened as `<scheme>://<path>` from a fresh process.
+  defaults keys. Then each route is opened as `<scheme>://<path>` in the running app.
 - **A screen counts as settled** when two consecutive frames 300 ms apart hash identical (simctl
   re-encodes the same framebuffer to byte-identical PNGs), with a 5 s cap and a per-route override
   in `routes.waitFor`. A screen that never settles is captured anyway and marked as such, never
@@ -214,9 +214,9 @@ the Metro-driven runs to the pixel (Home 10.65%, Billing 4.27%, Explore 2.33%, A
 1.17%, the other two exactly 0). Two captures of the same published update, loaded fresh each
 time, differed by 0 pixels.
 
-The **runner build** is only for the release path, where there is no launcher: a build whose
-`app.config` sets `updates.disableAntiBrickingMeasures: true` only under the `routeshot` EAS
-profile, and whose root layout calls `useRouteshotUpdateOverride()` from `routeshot/expo`. The CLI
+The **runner build** is for the release path, where there is no launcher: a release simulator
+build from the `routeshot` EAS profile, whose `app.config` sets
+`updates.disableAntiBrickingMeasures: true` only under that profile, and whose root layout calls `useRouteshotUpdateOverride()` from `routeshot/expo`. The CLI
 launches the app, hands it `<scheme>://routeshot/update?url=<manifest>` as a deep link (launch
 arguments never reach JS without a native module; `Linking` is already there), the hook applies
 Expo's own `Updates.setUpdateURLAndRequestHeadersOverride`, and the CLI terminates and relaunches
@@ -245,8 +245,9 @@ one comment on the PR that lists the screens with a verdict other than green, th
 and a link to the hosted report. The server judges every changed screen against its uploaded
 code. Set `fail-on-change: true` to fail the job when anything changed above the pixel threshold.
 Inputs reach the scripts as environment variables, never interpolated into them, since a branch
-name on a fork PR is attacker-controlled. Other inputs: `label`, `update-url`, `device`,
-`dev-client`, `github-token`; outputs: `run-id`, `report-url`.
+name on a fork PR is attacker-controlled. Other inputs: `label`, `baseline` (a server run id or
+branch name), `update-url`, `device`, `dev-client`, `github-token`; outputs: `run-id`,
+`report-url`.
 
 The action does not build the app. Your workflow builds or installs the simulator app first
 (`npx expo run:ios`, or an EAS simulator build) and, for a development build, leaves a dev server
@@ -264,7 +265,7 @@ demo token.
 | ---------------------------------------------- | ----- | --------------------------------------------------------------------------- |
 | `POST /runs`                                   | real  | multipart upload: `index.json`, PNGs, `.code.txt`, optional `verdicts.json` |
 | `GET /runs?branch=&limit=`                     | real  | newest first; how `compare --remote main` resolves a branch to a run        |
-| `GET /runs/:id`, `/files/:name`                | none  | the index and the screenshots, behind an unguessable id                     |
+| `GET /runs/:id`, `GET /runs/:id/files/:name`   | none  | the index and the screenshots, behind an unguessable id                     |
 | `GET /runs/:id/report`                         | none  | the judge report for a run uploaded with its verdicts                       |
 | `POST /judge`                                  | demo  | one judge question with the server's key                                    |
 | `GET /compare?baseline=&candidate=&threshold=` | real  | diff, judge the changed screens with their code, cache by inputs            |
@@ -318,7 +319,7 @@ Kept because the next person to port this to Android or to a hosted runner will 
   SpringBoard clears it; the write does nothing until SpringBoard restarts.
 - A development build cold-starts into the dev launcher and discards the deep link it was opened
   with. Opening the `exp+<slug>://expo-development-client/?url=` link first loads the bundle; the
-  route link then works from a fresh process every time.
+  route link then works. The capture does this once, before the first route.
 - expo-dev-menu's floating gear and its onboarding sheet land in screenshots. Both are off through
   its own defaults keys, per bundle id.
 - `pod install` crashes on a non-UTF-8 locale with Ruby 4, and `expo prebuild` exits 0 anyway. A
@@ -343,8 +344,9 @@ so there is nothing to register.
 
 ## Built on Expo's code
 
-`packages/routeshot/src/vendor/` carries `getRoutesCore.ts`, `matchers.tsx`, and the fs-backed
-`RequireContext` ponyfill from `expo/expo`, with the commit SHA in each header. `simulator.ts` is a
+`packages/routeshot/src/vendor/` carries `get-routes-core.ts`, `matchers.ts`, `route-node.ts`,
+`url.ts` and the fs-backed `RequireContext` ponyfill from `expo/expo`, with the commit SHA in each
+header. `simulator.ts` is a
 port of `@expo/cli` and Expo Orbit. If this were upstream work, the two things worth publishing are
 a public `getRoutes` entry that takes a filesystem context, and the simctl helpers as a package.
 

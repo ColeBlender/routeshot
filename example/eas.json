@@ -12,7 +12,6 @@
       }
     },
     "routeshot": {
-      "developmentClient": true,
       "distribution": "internal",
       "channel": "routeshot",
       "ios": {

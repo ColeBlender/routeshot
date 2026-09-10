@@ -50,15 +50,15 @@ EXPO_PUBLIC_ROUTESHOT_SCENARIO=benign npx expo start  # or: npm run start:benign
 EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start  # or: npm run start:broken
 ```
 
-| Route       | `benign`                            | expected       | `broken`                                      | expected         |
-| ----------- | ----------------------------------- | -------------- | --------------------------------------------- | ---------------- |
-| Home        | Subtitle copy rewritten             | GREEN, changed | Title in a fixed-height box, clipped mid-word | RED, `clipped`   |
-| Explore     | Accent colour green instead of blue | GREEN, changed | Badge absolutely positioned over the caption  | RED, `overlap`   |
-| Settings    | List rows in reverse order          | GREEN, changed | unchanged                                     | GREEN            |
-| Billing     | unchanged                           | GREEN          | Primary button pushed below the viewport      | RED, `offscreen` |
-| Item detail | unchanged                           | GREEN          | Renders an empty white screen                 | RED, `blank`     |
-| Modal       | unchanged                           | GREEN          | unchanged                                     | GREEN            |
-| About       | unchanged                           | GREEN          | Renders a red "Something went wrong" box      | RED, `error`     |
+| Route       | `benign`                            | expected       | `broken`                                      | expected                      |
+| ----------- | ----------------------------------- | -------------- | --------------------------------------------- | ----------------------------- |
+| Home        | Subtitle copy rewritten             | GREEN, changed | Title in a fixed-height box, clipped mid-word | RED, `clipped`                |
+| Explore     | Accent colour green instead of blue | GREEN, changed | Badge absolutely positioned over the caption  | RED, `overlap`                |
+| Settings    | List rows in reverse order          | GREEN, changed | unchanged                                     | GREEN                         |
+| Billing     | unchanged                           | GREEN          | Primary button pushed below the viewport      | RED, `offscreen` or `missing` |
+| Item detail | unchanged                           | GREEN          | Renders an empty white screen                 | RED, `blank`                  |
+| Modal       | unchanged                           | GREEN          | unchanged                                     | GREEN                         |
+| About       | unchanged                           | GREEN          | Renders a red "Something went wrong" box      | RED, `error`                  |
 
 "GREEN, changed" means the diff is non-zero and the judge should still say the screen looks fine.
 An unchanged row is a control: it should stay identical across all three scenarios, so any diff on
@@ -111,8 +111,8 @@ xcrun simctl openurl booted 'exp+routeshot-example://expo-development-client/?ur
 xcrun simctl openurl booted routeshotexample://settings/billing
 ```
 
-That is a fresh process every time, so navigation state really is restored from the link rather
-than left over from the previous route. A release build has neither problem and needs no Metro,
+routeshot does that once, before the first route; the routes after it are deep links into the
+running app. A release build has neither problem and needs no Metro,
 which is the better capture target where an update override is not needed.
 
 The dev client also draws a floating gear button over the top right of every screen, and shows a
