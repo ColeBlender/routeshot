@@ -16,30 +16,37 @@ nothing to maintain.
 ## See it work
 
 This repo includes a small example app with a switch that breaks five of its screens on purpose.
-You need a Mac with Xcode, Node 22+, and pnpm (`corepack enable`). No API key: for this demo the
-example app asks a hosted judge that holds a capped Anthropic key.
+You need a Mac with Xcode and Node 22+. No API key: for this demo the example app asks a hosted
+judge that holds a capped Anthropic key.
+
+Terminal 1: clone, install, build the example app. Leave it running when it finishes; that is
+Metro serving the app.
 
 ```sh
-git clone https://github.com/ColeBlender/routeshot && cd routeshot
-pnpm install
-cd example && npx expo run:ios
+git clone https://github.com/ColeBlender/routeshot && cd routeshot && npm install && cd example && npx expo run:ios
 ```
 
-That builds the example app and leaves Metro running. In a second terminal, in `example/`:
+Terminal 2: check every screen.
 
 ```sh
-pnpm exec routeshot capture --judge            # 7 screens, all green
+cd routeshot/example && npx routeshot capture --judge
 ```
 
-Now flip the switch. Stop Metro in the first terminal and restart it with the broken screens,
-then capture again:
+7 screens, all green. Now flip the switch. In terminal 1, press Ctrl+C to stop Metro, then restart
+it with the broken screens:
 
 ```sh
-EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start     # first terminal
-pnpm exec routeshot capture --judge --open               # second terminal: 5 red, report opens
+EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start
 ```
 
-Here is that report, hosted: https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
+Terminal 2 again:
+
+```sh
+npx routeshot capture --judge --open
+```
+
+5 red, and the report opens with each broken screen marked up. Here is that report, hosted:
+https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
 
 ## Use it in your app
 
@@ -50,7 +57,7 @@ Here is that report, hosted: https://routeshot-server-production.up.railway.app/
 Drop your API key in `.env.local`. routeshot works out the provider from the key itself (`sk-ant-`
 is Anthropic, `sk-` is OpenAI, `AIza` is Google) and uses that provider's best vision model. Claude
 ships today; each other provider is one adapter file. Not on npm yet: clone this repo and
-`pnpm link` the package until the public release. Details, options, the GitHub Action, and the
+`npm link` the package until the public release. Details, options, the GitHub Action, and the
 honest list of limitations: [docs/details.md](docs/details.md).
 
 ## License
