@@ -16,7 +16,7 @@ nothing to maintain.
 ## See it work
 
 This repo includes a small example app with a switch that breaks five of its screens on purpose.
-You need a Mac with Xcode and Node 22+. No API key: for this demo the example app asks a hosted
+You need a Mac with Xcode, CocoaPods, and Node 22+. No API key: for this demo the example app asks a hosted
 judge that holds a capped Anthropic key.
 
 Terminal 1: clone, install, build the example app. Leave it running when it finishes; that is
