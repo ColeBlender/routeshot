@@ -33,14 +33,17 @@ Terminal 2: check every screen.
 cd routeshot/example && npx routeshot capture --judge
 ```
 
-7 screens, all green ([see an example report](https://routeshot-server-production.up.railway.app/examples/green)). Now flip the switch. In terminal 1, press Ctrl+C to stop Metro, then restart
-it with the broken screens:
+7 screens, all green ([see an example report](https://routeshot-server-production.up.railway.app/examples/green)).
+
+Now flip the switch.
+
+Terminal 1: press Ctrl+C to stop Metro, then restart it with the broken screens.
 
 ```sh
 EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start
 ```
 
-Terminal 2 again:
+Terminal 2: check every screen again.
 
 ```sh
 npx routeshot capture --judge --open
