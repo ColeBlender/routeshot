@@ -30,7 +30,7 @@ A defect is one of:
 
 score is your confidence that the screen is broken: 0 is certainly fine, 100 is certainly broken.
 region is the bounding box of the defect in the screenshot, normalized to 0..1 of width and height, or null when there is no defect.
-caption is at most 20 words, written for a pull request comment: what is wrong, or when nothing is, what the screen shows.
+caption is at most 20 words, written for a pull request comment: what is wrong, or when nothing is, what the screen shows. Plain punctuation: commas and periods, no dashes, no quotation marks around the whole caption.
 
 Respond ONLY with JSON in this shape, no prose:
 {"score": 0-100, "defect": "clipped|overlap|offscreen|wrapped|missing|blank|error|other|none", "region": {"x": 0-1, "y": 0-1, "w": 0-1, "h": 0-1} | null, "caption": "<= 20 words"}`;
@@ -270,12 +270,24 @@ async function judgeRouteResultAsync(
       score: output.score,
       defect: output.defect,
       region: output.region ?? undefined,
-      // Models sometimes wrap the whole caption in quotes. Only a matching pair goes; a caption
-      // that merely starts with a quoted word ('Saved' button ...) keeps it.
-      caption: output.caption.trim().replace(/^(['"])(.*)\1$/s, '$2'),
+      caption: cleanCaption(output.caption),
     },
     spent: true,
   };
+}
+
+/**
+ * Models sometimes wrap the whole caption in quotes, or leave one dangling at the end. A matching
+ * pair goes, a lone trailing quote goes; a caption that merely starts with a quoted word
+ * ('Saved' button ...) keeps it. Dashes become commas: the captions land in PR comments.
+ */
+export function cleanCaption(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^(['"])(.*)\1$/s, '$2')
+    .replace(/(?<=[.!?])['"]$/, '')
+    .replace(/\s*[—–]\s*/g, ', ')
+    .replace(/\s+-\s+/g, ', ');
 }
 
 function parseJudgeOutput(response: JudgeResponse): JudgeOutput | undefined {

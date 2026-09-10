@@ -62,7 +62,7 @@ export async function judgeRunAsync(options: JudgeRunOptions): Promise<JudgeRunR
     });
   }
 
-  Log.log(`judging ${inputs.length} screen(s) with ${deps.model}`);
+  Log.log(`judging ${inputs.length} screen${inputs.length === 1 ? '' : 's'} with ${deps.model}`);
   // Each answer prints the moment it lands: four are in flight at a time and a screen can take
   // ten seconds, so a silent wait for the whole batch reads as a hang.
   const paint = { red: pc.red, yellow: pc.yellow, green: pc.green, unverified: pc.gray };

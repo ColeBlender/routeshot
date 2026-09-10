@@ -9,6 +9,7 @@ import {
   downscaleForJudge,
   createAnthropicJudgeModel,
   judgeRouteAsync,
+  cleanCaption,
   judgeRoutesAsync,
   levelForScore,
   type JudgeDeps,
@@ -230,6 +231,26 @@ describe('judgeRouteAsync', () => {
 
     expect(verdict.level).toBe('unverified');
     expect(verdict.caption).toBe('judge timed out');
+  });
+});
+
+describe('cleanCaption', () => {
+  it('strips a wrapping pair or a dangling trailing quote, keeps a leading quoted word', () => {
+    expect(cleanCaption('"Title is clipped."')).toBe('Title is clipped.');
+    expect(cleanCaption("Badge overlaps the caption.'")).toBe('Badge overlaps the caption.');
+    expect(cleanCaption("'Saved' badge overlaps the caption.")).toBe(
+      "'Saved' badge overlaps the caption."
+    );
+  });
+
+  it('turns dashes into commas', () => {
+    expect(cleanCaption('Button is missing—pushed offscreen by the margin.')).toBe(
+      'Button is missing, pushed offscreen by the margin.'
+    );
+    expect(cleanCaption('Blank screen - the early return renders nothing.')).toBe(
+      'Blank screen, the early return renders nothing.'
+    );
+    expect(cleanCaption('A well-formed caption stays.')).toBe('A well-formed caption stays.');
   });
 });
 
