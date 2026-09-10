@@ -8,7 +8,7 @@ animations that never settle, and only static bundled images. A pixel that chang
 runs changed because the code changed.
 
 ```
-pnpm install            # from the repo root
+npm install             # from the repo root
 cd example
 npx expo run:ios        # builds the dev client and launches the simulator
 ```
@@ -45,9 +45,9 @@ instance of each defect class the judge is supposed to name, and `benign` holds 
 pixels without anything being wrong.
 
 ```
-pnpm start                                        # baseline
-EXPO_PUBLIC_ROUTESHOT_SCENARIO=benign pnpm start  # or: pnpm start:benign
-EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken pnpm start  # or: pnpm start:broken
+npx expo start                                        # baseline
+EXPO_PUBLIC_ROUTESHOT_SCENARIO=benign npx expo start  # or: npm run start:benign
+EXPO_PUBLIC_ROUTESHOT_SCENARIO=broken npx expo start  # or: npm run start:broken
 ```
 
 | Route       | `benign`                            | expected       | `broken`                                      | expected         |
@@ -84,8 +84,6 @@ The gate is the `ROUTESHOT_UPDATE_OVERRIDE=1` variable set in that profile's `en
 variables are not available when the config is evaluated locally, so the explicit variable is the
 one that actually decides.
 
-`updates.url` in `app.json` is a placeholder. Replace the project id after `eas init`.
-
 ## Capturing on the simulator
 
 Two things bite before a single screenshot is taken. Both were measured on macOS with Xcode 26.6
@@ -120,7 +118,3 @@ which is the better capture target where an update override is not needed.
 The dev client also draws a floating gear button over the top right of every screen, and shows a
 blue "Refreshing" banner while it reconnects to Metro. The gear sits in the same place every run
 so it diffs clean, but the banner does not, which is another reason to prefer a release build.
-
-`metro.config.js` exists for one reason: `routeshot` is ESM only, and its `exports` map declares
-`import` without a `require` or `default` condition, so Metro cannot resolve `routeshot/expo`
-without being told which conditions to ask for.
