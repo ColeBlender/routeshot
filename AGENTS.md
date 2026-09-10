@@ -20,9 +20,13 @@ route's import graph (`affected.ts`) to pick the screens a git diff touches and 
 behind each screen, drives the iOS Simulator through `xcrun simctl` (ported from `@expo/cli` and
 Expo Orbit), deep-links into each route, waits for the screen to stop changing, screenshots it.
 `judge` sends screenshot + code to Claude (`judge.ts`, one question: does this look broken?).
-`compare` diffs two runs with pixelmatch. `--upload` sends a run to the server; the server diffs,
-judges changed screens with the uploaded code, and hosts the report. The server keeps its own
-copy of `judge.ts` and the types (it must not depend on the CLI package); keep them identical.
+`compare` diffs two runs with pixelmatch. `--upload` sends a run (with its `verdicts.json` when it
+was judged) to the server; the server diffs, judges changed screens with the uploaded code, hosts
+compare reports at `/r/:id`, judge reports at `/runs/:id/report`, and the README's two examples at
+`/examples/green` and `/examples/broken` (pinned with `PUT /examples/:name`). Without an
+`ANTHROPIC_API_KEY` the CLI asks the server's `POST /judge` instead, which is what the demo token
+in `example/routeshot.config.ts` is for. The server keeps its own copy of `judge.ts`,
+`judge-report.ts` and the types (it must not depend on the CLI package); keep them identical.
 
 ## Conventions (Expo house style)
 
@@ -39,10 +43,14 @@ copy of `judge.ts` and the types (it must not depend on the CLI package); keep t
 
 ```
 pnpm check                 # lint, format check, typecheck, test, build
+pnpm judge:eval            # score the judge on the labeled example runs (key in packages/server/.env)
 pnpm --filter routeshot test
 pnpm --filter @routeshot/server build && pnpm --filter @routeshot/server dev   # needs packages/server/.env
 cd example && npx expo run:ios
 ```
+
+The README's quickstart uses npm (`npm install` at the root, `npx routeshot` from `example/`); both
+package managers link the workspace, and `package-lock.json` is committed for that path.
 
 ## Things that are deliberately not here
 
