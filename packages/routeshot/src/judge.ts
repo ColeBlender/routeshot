@@ -298,8 +298,16 @@ function parseJudgeOutput(response: JudgeResponse): JudgeOutput | undefined {
   }
 }
 
-/** Judges many routes with a fixed concurrency and one daily spend check for the whole batch. */
-export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): Promise<Verdict[]> {
+/**
+ * Judges many routes with a fixed concurrency and one daily spend check for the whole batch.
+ * `onVerdict` fires as each answer lands, in completion order, so a caller can print it while the
+ * rest are still in flight; the returned array is in input order.
+ */
+export async function judgeRoutesAsync(
+  inputs: JudgeInput[],
+  deps: JudgeDeps,
+  onVerdict?: (verdict: Verdict, done: number, total: number) => void
+): Promise<Verdict[]> {
   if (inputs.length === 0) {
     return [];
   }
@@ -319,6 +327,7 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
   const verdicts: Verdict[] = [];
   let refundable = 0;
   let next = 0;
+  let done = 0;
   const workers = Array.from({ length: Math.min(deps.concurrency, inputs.length) }, async () => {
     for (;;) {
       const index = next++;
@@ -328,6 +337,7 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
       }
       if (index >= allowed) {
         verdicts[index] = unverified(input.route, 'daily judge cap reached');
+        onVerdict?.(verdicts[index], ++done, inputs.length);
         continue;
       }
       const result = await judgeRouteResultAsync(input, deps);
@@ -335,6 +345,7 @@ export async function judgeRoutesAsync(inputs: JudgeInput[], deps: JudgeDeps): P
       if (!result.spent) {
         refundable += 1;
       }
+      onVerdict?.(result.verdict, ++done, inputs.length);
     }
   });
   await Promise.all(workers);

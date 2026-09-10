@@ -259,6 +259,36 @@ describe('judgeRoutesAsync', () => {
     expect(peak).toBeLessThanOrEqual(4);
   });
 
+  it('reports each verdict as it lands, counting up to the total', async () => {
+    const seen: [string, number, number][] = [];
+    const verdicts = await judgeRoutesAsync(
+      [input('/slow'), input('/fast')],
+      deps({
+        anthropic: {
+          async parseAsync(request) {
+            const slow =
+              request.content[0]?.type === 'text' && request.content[0].text.includes('/slow');
+            await new Promise((resolve) => setTimeout(resolve, slow ? 20 : 1));
+            return {
+              parsedOutput: { score: 5, defect: 'none', region: null, caption: 'ok' },
+              text: '',
+            };
+          },
+        },
+      }),
+      (verdict, done, total) => {
+        seen.push([verdict.route, done, total]);
+      }
+    );
+
+    // Completion order for the callback, input order for the result.
+    expect(seen).toEqual([
+      ['/fast', 1, 2],
+      ['/slow', 2, 2],
+    ]);
+    expect(verdicts.map((item) => item.route)).toEqual(['/slow', '/fast']);
+  });
+
   it('spends only what the daily cap leaves and marks the rest unverified', async () => {
     const recorded: number[] = [];
     const verdicts = await judgeRoutesAsync(

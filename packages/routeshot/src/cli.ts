@@ -231,10 +231,17 @@ async function judgeCommandAsync(runRef: string, options: JudgeCommandOptions): 
   }
 }
 
+/** The verdicts already printed as they landed; this is the roll-up plus the ones to act on. */
 function printVerdicts(judged: JudgeRunResult): void {
   const { summary } = judged;
+  const counts = (['red', 'yellow', 'unverified', 'green'] as const)
+    .filter((level) => summary[level] > 0)
+    .map((level) => `${summary[level]} ${level}`)
+    .join(', ');
   Log.log(
-    `${summary.red} red, ${summary.yellow} yellow, ${summary.green} green, ${summary.unverified} unverified`
+    summary.green === summary.total && summary.total > 0
+      ? `${summary.total} screens, all green`
+      : `${summary.total} screens: ${counts}`
   );
   for (const verdict of judged.verdicts) {
     if (verdict.level !== 'green') {

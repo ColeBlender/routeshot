@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import pc from 'picocolors';
 
 import { RouteshotError } from './errors.js';
 import { createRemoteJudgeModel } from './judge-remote.js';
@@ -62,7 +63,15 @@ export async function judgeRunAsync(options: JudgeRunOptions): Promise<JudgeRunR
   }
 
   Log.log(`judging ${inputs.length} screen(s) with ${deps.model}`);
-  for (const verdict of await judgeRoutesAsync(inputs, deps)) {
+  // Each answer prints the moment it lands: four are in flight at a time and a screen can take
+  // ten seconds, so a silent wait for the whole batch reads as a hang.
+  const paint = { red: pc.red, yellow: pc.yellow, green: pc.green, unverified: pc.gray };
+  const judged = await judgeRoutesAsync(inputs, deps, (verdict, done, total) => {
+    Log.log(
+      `[${done}/${total}] ${paint[verdict.level](verdict.level.padEnd(10))} ${verdict.route}  ${verdict.caption}`
+    );
+  });
+  for (const verdict of judged) {
     verdicts.set(verdict.route, verdict);
   }
 
