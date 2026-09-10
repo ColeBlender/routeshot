@@ -54,11 +54,9 @@ https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
 "test": "vitest run && routeshot capture --changed-since origin/main --judge"
 ```
 
-Drop your API key in `.env.local`. routeshot works out the provider from the key itself (`sk-ant-`
-is Anthropic, `sk-` is OpenAI, `AIza` is Google) and uses that provider's best vision model. Claude
-ships today; each other provider is one adapter file. Not on npm yet: clone this repo and
-`npm link` the package until the public release. Details, options, the GitHub Action, and the
-honest list of limitations: [docs/details.md](docs/details.md).
+Put your API key in `.env.local`; routeshot picks the provider from the key (Claude ships today,
+others are one adapter file). Not on npm yet: clone and `npm link` until the public release.
+Options, the GitHub Action, and limitations: [docs/details.md](docs/details.md).
 
 ## License
 
