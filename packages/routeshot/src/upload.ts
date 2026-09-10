@@ -36,6 +36,19 @@ export async function uploadRunAsync(options: UploadRunOptions): Promise<UploadR
     'index.json'
   );
 
+  // A run that was judged locally carries its verdicts up, so the server can host the same
+  // report `--open` showed, at /runs/:id/report.
+  try {
+    const verdicts = await readFile(join(options.dir, 'verdicts.json'));
+    form.append(
+      'verdicts.json',
+      new Blob([verdicts], { type: 'application/json' }),
+      'verdicts.json'
+    );
+  } catch {
+    // Not judged: the server gets the screenshots and code alone.
+  }
+
   for (const entry of options.run.routes) {
     if (entry.status !== 'captured' || entry.file === undefined) {
       continue;

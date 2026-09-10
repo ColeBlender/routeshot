@@ -5,11 +5,19 @@ import { timingSafeEqual } from 'node:crypto';
 import { compareRunsAsync } from './compare.js';
 import { ServerError, isServerError } from './errors.js';
 import { newId } from './ids.js';
+import { renderJudgeReport } from './judge-report.js';
 import { JUDGE_MAX_TOKENS, JUDGE_SYSTEM_PROMPT, type JudgeDeps } from './judge.js';
 import type { Logger } from './log.js';
 import { renderReportHtml } from './report-html.js';
-import { parseCaptureRun, parseJudgeBody } from './schemas.js';
+import {
+  parseCaptureRun,
+  parseExampleBody,
+  parseExampleName,
+  parseJudgeBody,
+  parseVerdicts,
+} from './schemas.js';
 import type { Store, StoredFile } from './store.js';
+import type { Verdict } from './types.js';
 
 export interface AppDeps {
   store: Store;
@@ -119,6 +127,7 @@ export function createApp(deps: AppDeps) {
     });
 
     let indexJson: string | undefined;
+    let verdictsJson: string | undefined;
     const files: StoredFile[] = [];
     let repo: string | undefined;
 
@@ -126,6 +135,8 @@ export function createApp(deps: AppDeps) {
       if (typeof value === 'string') {
         if (key === 'index.json' || key === 'index') {
           indexJson = value;
+        } else if (key === 'verdicts.json') {
+          verdictsJson = value;
         } else if (key === 'repo') {
           repo = value;
         }
@@ -133,6 +144,10 @@ export function createApp(deps: AppDeps) {
       }
       if (key === 'index.json' || key === 'index' || value.name === 'index.json') {
         indexJson = await value.text();
+        continue;
+      }
+      if (key === 'verdicts.json' || value.name === 'verdicts.json') {
+        verdictsJson = await value.text();
         continue;
       }
       // The part name is the slug the index refers to. Clients that key every file under one
@@ -152,6 +167,25 @@ export function createApp(deps: AppDeps) {
       throw new ServerError('BAD_REQUEST', 'index.json is not valid JSON', { cause: error });
     }
     const index = parseCaptureRun(parsed);
+
+    let verdicts: Verdict[] | undefined;
+    if (verdictsJson !== undefined) {
+      let parsedVerdicts: unknown;
+      try {
+        parsedVerdicts = JSON.parse(verdictsJson);
+      } catch (error) {
+        throw new ServerError('BAD_REQUEST', 'verdicts.json is not valid JSON', { cause: error });
+      }
+      verdicts = parseVerdicts(parsedVerdicts);
+      const routes = new Set(index.routes.map((entry) => entry.route));
+      const stray = verdicts.filter((verdict) => !routes.has(verdict.route));
+      if (stray.length > 0) {
+        throw new ServerError(
+          'BAD_REQUEST',
+          `verdicts.json names routes the run did not capture: ${stray.map((verdict) => verdict.route).join(', ')}`
+        );
+      }
+    }
 
     const uploaded = new Set(files.map((file) => file.name));
     const missing = index.routes
@@ -179,11 +213,13 @@ export function createApp(deps: AppDeps) {
         branch: index.git.branch,
         sha: index.git.sha,
         index: { ...index, id },
+        verdicts,
       },
       files
     );
 
-    return c.json({ id, url: `/runs/${id}` }, 201);
+    // A judged run has a page worth opening; an unjudged one only has its index.
+    return c.json({ id, url: verdicts === undefined ? `/runs/${id}` : `/runs/${id}/report` }, 201);
   });
 
   app.get('/runs', async (c) => {
@@ -206,6 +242,22 @@ export function createApp(deps: AppDeps) {
     }
     return c.json(run.index);
   });
+
+  /** The judge report for one run, the page `capture --judge --open` shows locally. */
+  const judgeReportAsync = async (id: string): Promise<string> => {
+    const run = await deps.store.getRunAsync(id);
+    if (!run) {
+      throw new ServerError('NOT_FOUND', 'run not found');
+    }
+    if (run.verdicts === undefined) {
+      throw new ServerError('NOT_FOUND', 'this run was uploaded without verdicts');
+    }
+    return renderJudgeReport(run.index, run.verdicts, {
+      fileUrl: (name) => `/runs/${run.id}/files/${name}`,
+    });
+  };
+
+  app.get('/runs/:id/report', async (c) => c.html(await judgeReportAsync(c.req.param('id'))));
 
   app.get('/runs/:id/files/:name', async (c) => {
     const bytes = await deps.store.getFileAsync(c.req.param('id'), c.req.param('name'));
@@ -322,6 +374,37 @@ export function createApp(deps: AppDeps) {
     }
 
     return c.json({ ...saved.report, id: saved.id, url: `/r/${saved.id}` });
+  });
+
+  /**
+   * A judged run under a fixed name, for links that must not rot: the README's "see that report"
+   * points at /examples/green and /examples/broken. Pinning needs the real token; reading does not.
+   */
+  app.put('/examples/:name', async (c) => {
+    requireToken(c.req.header('authorization'));
+    const name = parseExampleName(c.req.param('name'));
+    const { runId } = parseExampleBody(
+      await c.req.json().catch(() => {
+        throw new ServerError('BAD_REQUEST', 'expected a JSON body');
+      })
+    );
+    const run = await deps.store.getRunAsync(runId);
+    if (!run) {
+      throw new ServerError('NOT_FOUND', `run ${runId} not found`);
+    }
+    if (run.verdicts === undefined) {
+      throw new ServerError('BAD_REQUEST', `run ${runId} was uploaded without verdicts`);
+    }
+    await deps.store.setExampleAsync(name, runId);
+    return c.json({ name, runId, url: `/examples/${name}` });
+  });
+
+  app.get('/examples/:name', async (c) => {
+    const runId = await deps.store.getExampleRunIdAsync(parseExampleName(c.req.param('name')));
+    if (runId === undefined) {
+      throw new ServerError('NOT_FOUND', 'no such example');
+    }
+    return c.html(await judgeReportAsync(runId));
   });
 
   app.get('/r/:compareId', async (c) => {

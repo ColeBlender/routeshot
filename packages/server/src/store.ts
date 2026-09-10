@@ -1,4 +1,4 @@
-import type { CaptureRun, CompareReport } from './types.js';
+import type { CaptureRun, CompareReport, Verdict } from './types.js';
 
 /** A run as the server holds it: the client's index plus the columns we query on. */
 export interface StoredRun {
@@ -10,6 +10,8 @@ export interface StoredRun {
   branch: string | undefined;
   sha: string | undefined;
   index: CaptureRun;
+  /** The judge's answers uploaded with the run, one per route. Undefined when it was not judged. */
+  verdicts: Verdict[] | undefined;
 }
 
 /** What `GET /runs` returns. The full index is only served by `GET /runs/:id`. */
@@ -72,6 +74,9 @@ export interface Store extends FileStore {
   /** Spend ceiling bookkeeping, one row per UTC day. */
   countJudgeCallsAsync(day: string): Promise<number>;
   recordJudgeCallsAsync(day: string, count: number): Promise<void>;
+  /** Pins a run under a fixed public name; pinning again replaces the run. */
+  setExampleAsync(name: string, runId: string): Promise<void>;
+  getExampleRunIdAsync(name: string): Promise<string | undefined>;
 }
 
 function summarize(run: StoredRun): RunSummary {
@@ -92,6 +97,7 @@ export class MemoryStore implements Store {
   private readonly files = new Map<string, Uint8Array>();
   private readonly compares = new Map<string, StoredCompare>();
   private readonly judgeCalls = new Map<string, number>();
+  private readonly examples = new Map<string, string>();
 
   async saveRunAsync(run: StoredRun, files: StoredFile[]): Promise<void> {
     this.runs.set(run.id, run);
@@ -172,5 +178,13 @@ export class MemoryStore implements Store {
 
   async recordJudgeCallsAsync(day: string, count: number): Promise<void> {
     this.judgeCalls.set(day, (this.judgeCalls.get(day) ?? 0) + count);
+  }
+
+  async setExampleAsync(name: string, runId: string): Promise<void> {
+    this.examples.set(name, runId);
+  }
+
+  async getExampleRunIdAsync(name: string): Promise<string | undefined> {
+    return this.examples.get(name);
   }
 }

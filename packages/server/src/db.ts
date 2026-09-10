@@ -3,7 +3,7 @@ import postgres from 'postgres';
 
 import { ServerError } from './errors.js';
 import type { RunSummary, Store, StoredCompare, StoredFile, StoredRun } from './store.js';
-import type { CaptureRun, CompareReport } from './types.js';
+import type { CaptureRun, CompareReport, Verdict } from './types.js';
 
 export type Sql = postgres.Sql;
 
@@ -36,6 +36,7 @@ interface RunRow {
   branch: string | null;
   sha: string | null;
   index: CaptureRun;
+  verdicts: Verdict[] | null;
 }
 
 function toStoredRun(row: RunRow): StoredRun {
@@ -47,6 +48,7 @@ function toStoredRun(row: RunRow): StoredRun {
     branch: row.branch ?? undefined,
     sha: row.sha ?? undefined,
     index: row.index,
+    verdicts: row.verdicts ?? undefined,
   };
 }
 
@@ -63,11 +65,12 @@ export class PostgresStore implements Store {
   async saveRunAsync(run: StoredRun, files: StoredFile[]): Promise<void> {
     await this.sql.begin(async (tx) => {
       await tx`
-        INSERT INTO runs (id, label, created_at, repo, branch, sha, device, app, update_url, "index")
+        INSERT INTO runs (id, label, created_at, repo, branch, sha, device, app, update_url, "index", verdicts)
         VALUES (${run.id}, ${run.label}, ${run.createdAt}, ${run.repo ?? null},
                 ${run.branch ?? null}, ${run.sha ?? null}, ${tx.json(asJson(run.index.device))},
                 ${tx.json(asJson(run.index.app))}, ${run.index.updateUrl ?? null},
-                ${tx.json(asJson(run.index))})
+                ${tx.json(asJson(run.index))},
+                ${run.verdicts === undefined ? null : tx.json(asJson(run.verdicts))})
       `;
       for (const file of files) {
         await tx`
@@ -81,7 +84,7 @@ export class PostgresStore implements Store {
 
   async getRunAsync(id: string): Promise<StoredRun | undefined> {
     const rows = await this.sql<RunRow[]>`
-      SELECT id, label, created_at, repo, branch, sha, "index" FROM runs WHERE id = ${id}
+      SELECT id, label, created_at, repo, branch, sha, "index", verdicts FROM runs WHERE id = ${id}
     `;
     const row = rows[0];
     return row ? toStoredRun(row) : undefined;
@@ -93,7 +96,7 @@ export class PostgresStore implements Store {
     limit: number;
   }): Promise<RunSummary[]> {
     const rows = await this.sql<RunRow[]>`
-      SELECT id, label, created_at, repo, branch, sha, "index" FROM runs
+      SELECT id, label, created_at, repo, branch, sha, "index", verdicts FROM runs
       WHERE (${query.repo ?? null}::text IS NULL OR repo = ${query.repo ?? null})
         AND (${query.branch ?? null}::text IS NULL OR branch = ${query.branch ?? null})
       ORDER BY created_at DESC
@@ -189,6 +192,20 @@ export class PostgresStore implements Store {
       INSERT INTO judge_calls (day, calls) VALUES (${day}, ${count})
       ON CONFLICT (day) DO UPDATE SET calls = judge_calls.calls + EXCLUDED.calls
     `;
+  }
+
+  async setExampleAsync(name: string, runId: string): Promise<void> {
+    await this.sql`
+      INSERT INTO examples (name, run_id) VALUES (${name}, ${runId})
+      ON CONFLICT (name) DO UPDATE SET run_id = EXCLUDED.run_id, created_at = now()
+    `;
+  }
+
+  async getExampleRunIdAsync(name: string): Promise<string | undefined> {
+    const rows = await this.sql<{ run_id: string }[]>`
+      SELECT run_id FROM examples WHERE name = ${name}
+    `;
+    return rows[0]?.run_id;
   }
 }
 

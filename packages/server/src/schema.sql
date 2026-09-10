@@ -13,6 +13,10 @@ CREATE TABLE IF NOT EXISTS runs (
   "index"     JSONB       NOT NULL
 );
 
+-- The judge's answers for the run, when the client judged before uploading. GET /runs/:id/report
+-- renders them; a run uploaded without them only serves the compare path.
+ALTER TABLE runs ADD COLUMN IF NOT EXISTS verdicts JSONB;
+
 CREATE INDEX IF NOT EXISTS runs_repo_branch_created_at_idx
   ON runs (repo, branch, created_at DESC);
 
@@ -41,4 +45,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS compares_inputs_idx
 CREATE TABLE IF NOT EXISTS judge_calls (
   day    DATE   PRIMARY KEY,
   calls  BIGINT NOT NULL DEFAULT 0
+);
+
+-- Fixed public names for judged runs (/examples/green, /examples/broken): the README links to
+-- them, so they must survive re-uploads by pointing at whichever run was pinned last.
+CREATE TABLE IF NOT EXISTS examples (
+  name        TEXT PRIMARY KEY,
+  run_id      TEXT        NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

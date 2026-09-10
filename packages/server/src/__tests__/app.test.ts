@@ -36,6 +36,22 @@ function judgeDeps(anthropic: JudgeModel, overrides: Partial<JudgeDeps> = {}): J
   };
 }
 
+/** What the CLI writes to `verdicts.json` after judging `makeRun()`'s one route. */
+const RED_VERDICTS = {
+  run: 'local-run-1',
+  summary: { red: 1, yellow: 0, green: 0, unverified: 0, total: 1 },
+  verdicts: [
+    {
+      route: '/',
+      level: 'red',
+      score: 97,
+      defect: 'clipped',
+      region: { x: 0.1, y: 0.1, w: 0.8, h: 0.1 },
+      caption: 'Title is clipped mid-word',
+    },
+  ],
+};
+
 let store: MemoryStore;
 
 function build(overrides: Partial<AppDeps> = {}) {
@@ -56,7 +72,7 @@ async function uploadAsync(
   app: ReturnType<typeof build>,
   run: CaptureRun,
   files: Record<string, Uint8Array>,
-  options: { repo?: string; token?: string } = {}
+  options: { repo?: string; token?: string; verdicts?: unknown } = {}
 ): Promise<Response> {
   const form = new FormData();
   form.set(
@@ -64,6 +80,13 @@ async function uploadAsync(
     new Blob([JSON.stringify(run)], { type: 'application/json' }),
     'index.json'
   );
+  if (options.verdicts !== undefined) {
+    form.set(
+      'verdicts.json',
+      new Blob([JSON.stringify(options.verdicts)], { type: 'application/json' }),
+      'verdicts.json'
+    );
+  }
   for (const [name, bytes] of Object.entries(files)) {
     form.set(name, new Blob([bytes], { type: 'image/png' }), name);
   }
@@ -81,7 +104,7 @@ async function uploadIdAsync(
   app: ReturnType<typeof build>,
   run: CaptureRun,
   files: Record<string, Uint8Array>,
-  options: { repo?: string } = {}
+  options: { repo?: string; verdicts?: unknown } = {}
 ): Promise<string> {
   const response = await uploadAsync(app, run, files, options);
   expect(response.status).toBe(201);
@@ -175,6 +198,123 @@ describe('POST /runs', () => {
     const app = build();
     expect((await app.request('/runs/nope')).status).toBe(404);
     expect((await app.request('/runs/nope/files/index.png')).status).toBe(404);
+  });
+
+  it('keeps the verdicts uploaded with a run and renders them as the judge report', async () => {
+    const app = build();
+    const response = await uploadAsync(
+      app,
+      makeRun(),
+      { 'index.png': makePng(8, 8, [10, 20, 30]) },
+      { verdicts: RED_VERDICTS }
+    );
+    expect(response.status).toBe(201);
+    const { id, url } = (await response.json()) as { id: string; url: string };
+    expect(url).toBe(`/runs/${id}/report`);
+
+    const report = await app.request(`/runs/${id}/report`);
+    expect(report.status).toBe(200);
+    const html = await report.text();
+    expect(html).toContain('Title is clipped mid-word');
+    expect(html).toContain(`/runs/${id}/files/index.png`);
+    expect(html).toContain('class="region"');
+  });
+
+  it('404s the report of a run that was uploaded without verdicts', async () => {
+    const app = build();
+    const id = await uploadIdAsync(app, makeRun(), { 'index.png': makePng(8, 8, [10, 20, 30]) });
+    const response = await app.request(`/runs/${id}/report`);
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects verdicts for routes the run did not capture, and malformed verdicts', async () => {
+    const app = build();
+    const png = makePng(8, 8, [10, 20, 30]);
+    const stray = await uploadAsync(
+      app,
+      makeRun(),
+      { 'index.png': png },
+      { verdicts: { verdicts: [{ ...RED_VERDICTS.verdicts[0], route: '/elsewhere' }] } }
+    );
+    expect(stray.status).toBe(400);
+    expect(await stray.json()).toMatchObject({ error: expect.stringContaining('/elsewhere') });
+
+    const malformed = await uploadAsync(app, makeRun(), { 'index.png': png }, { verdicts: [1] });
+    expect(malformed.status).toBe(400);
+  });
+});
+
+describe('/examples', () => {
+  it('pins a judged run under a name and serves its report without a token', async () => {
+    const app = build();
+    const id = await uploadIdAsync(
+      app,
+      makeRun(),
+      { 'index.png': makePng(8, 8, [10, 20, 30]) },
+      { verdicts: RED_VERDICTS }
+    );
+
+    const pin = await app.request('/examples/broken', {
+      method: 'PUT',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({ runId: id }),
+    });
+    expect(pin.status).toBe(200);
+    expect(await pin.json()).toEqual({ name: 'broken', runId: id, url: '/examples/broken' });
+
+    const page = await app.request('/examples/broken');
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain('Title is clipped mid-word');
+  });
+
+  it('pinning again replaces the run', async () => {
+    const app = build();
+    const png = makePng(8, 8, [10, 20, 30]);
+    const first = await uploadIdAsync(
+      app,
+      makeRun(),
+      { 'index.png': png },
+      { verdicts: RED_VERDICTS }
+    );
+    const second = await uploadIdAsync(
+      app,
+      makeRun({ label: 'later' }),
+      { 'index.png': png },
+      { verdicts: { verdicts: [{ ...RED_VERDICTS.verdicts[0], caption: 'Second pin' }] } }
+    );
+    for (const runId of [first, second]) {
+      const pin = await app.request('/examples/green', {
+        method: 'PUT',
+        headers: { ...AUTH, 'content-type': 'application/json' },
+        body: JSON.stringify({ runId }),
+      });
+      expect(pin.status).toBe(200);
+    }
+    expect(await (await app.request('/examples/green')).text()).toContain('Second pin');
+  });
+
+  it('refuses to pin without the real token, an unjudged run, or a bad name', async () => {
+    const app = build({ demoToken: 'demo' });
+    const png = makePng(8, 8, [10, 20, 30]);
+    const judged = await uploadIdAsync(
+      app,
+      makeRun(),
+      { 'index.png': png },
+      { verdicts: RED_VERDICTS }
+    );
+    const unjudged = await uploadIdAsync(app, makeRun(), { 'index.png': png });
+    const put = (name: string, runId: string, token = TOKEN) =>
+      app.request(`/examples/${name}`, {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ runId }),
+      });
+
+    expect((await put('green', judged, 'demo')).status).toBe(401);
+    expect((await put('green', unjudged)).status).toBe(400);
+    expect((await put('green', 'nope')).status).toBe(404);
+    expect((await put('Not_A_Slug', judged)).status).toBe(400);
+    expect((await app.request('/examples/green')).status).toBe(404);
   });
 });
 
@@ -318,6 +458,10 @@ describe('GET /compare', () => {
       deleteFilesAsync: async (ownerId) => {
         await store.deleteFilesAsync(ownerId);
       },
+      setExampleAsync: async (name, runId) => {
+        await store.setExampleAsync(name, runId);
+      },
+      getExampleRunIdAsync: async (name) => await store.getExampleRunIdAsync(name),
       saveCompareAsync: async (compare) => {
         attempted.push(compare.id);
         return await store.saveCompareAsync(compare);

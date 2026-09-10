@@ -99,6 +99,35 @@ describe('uploadRunAsync', () => {
     expect(await code.text()).toBe('// app/index.tsx\nexport default 1;\n');
   });
 
+  it('sends verdicts.json along when the run was judged', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'routeshot-upload-'));
+    await writeFile(join(dir, 'index.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    await writeFile(join(dir, 'index.code.txt'), '// app/index.tsx\n');
+    await writeFile(join(dir, 'verdicts.json'), '{"run":"run-local","verdicts":[]}');
+    const fetch = stubFetch({
+      'POST /runs': { status: 201, body: { id: 'srv-1', url: '/runs/srv-1/report' } },
+    });
+
+    const result = await uploadRunAsync({ ...SERVER, dir, run: RUN });
+
+    expect(result.url).toBe('https://routeshot.example/runs/srv-1/report');
+    const form = fetch.calls[0]?.init?.body;
+    if (!(form instanceof FormData)) {
+      throw new Error('expected a multipart body');
+    }
+    expect([...form.keys()]).toEqual([
+      'index.json',
+      'verdicts.json',
+      'index.png',
+      'index.code.txt',
+    ]);
+    const verdicts = form.get('verdicts.json');
+    if (!(verdicts instanceof Blob)) {
+      throw new Error('expected the verdicts part to be a Blob');
+    }
+    expect(await verdicts.text()).toBe('{"run":"run-local","verdicts":[]}');
+  });
+
   it('throws with the server status and body when the upload is rejected', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'routeshot-upload-'));
     await writeFile(join(dir, 'index.png'), Buffer.from([0x89]));

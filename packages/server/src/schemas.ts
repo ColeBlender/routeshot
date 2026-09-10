@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { ServerError } from './errors.js';
-import type { CaptureRun } from './types.js';
+import type { CaptureRun, Verdict } from './types.js';
 
 /**
  * Runtime validation for everything crossing the wire. Kept next to `types.ts` on purpose: the
@@ -84,6 +84,74 @@ export function parseCaptureRun(value: unknown): CaptureRun {
       settled: entry.settled,
     })),
   };
+}
+
+const verdictSchema = z.object({
+  route: z.string().min(1),
+  level: z.enum(['green', 'yellow', 'red', 'unverified']),
+  score: z.number().min(0).max(100).optional(),
+  defect: z.enum([
+    'clipped',
+    'overlap',
+    'offscreen',
+    'wrapped',
+    'missing',
+    'blank',
+    'error',
+    'other',
+    'none',
+  ]),
+  region: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
+  caption: z.string(),
+});
+
+/**
+ * The `verdicts.json` the CLI writes next to a judged run: `{ run, summary, verdicts }`. Only the
+ * verdicts are kept; the summary is recomputed from them wherever it is shown.
+ */
+const verdictsFileSchema = z.object({ verdicts: z.array(verdictSchema) });
+
+export function parseVerdicts(value: unknown): Verdict[] {
+  const result = verdictsFileSchema.safeParse(value);
+  if (!result.success) {
+    const issue = result.error.issues[0];
+    const where = issue ? issue.path.join('.') || '(root)' : '(root)';
+    throw new ServerError(
+      'BAD_REQUEST',
+      `verdicts.json is not a list of verdicts: ${where}: ${issue?.message ?? 'unknown error'}`
+    );
+  }
+  return result.data.verdicts.map((verdict) => ({
+    route: verdict.route,
+    level: verdict.level,
+    score: verdict.score,
+    defect: verdict.defect,
+    region: verdict.region,
+    caption: verdict.caption,
+  }));
+}
+
+const EXAMPLE_NAME = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+/** `PUT /examples/:name`: a short lowercase slug, and the id of the run it should show. */
+export function parseExampleName(name: string): string {
+  if (!EXAMPLE_NAME.test(name)) {
+    throw new ServerError(
+      'BAD_REQUEST',
+      'an example name is 1 to 40 lowercase letters, digits and dashes'
+    );
+  }
+  return name;
+}
+
+const exampleBodySchema = z.object({ runId: z.string().min(1) });
+
+export function parseExampleBody(value: unknown): { runId: string } {
+  const result = exampleBodySchema.safeParse(value);
+  if (!result.success) {
+    throw new ServerError('BAD_REQUEST', 'expected a JSON body with a runId');
+  }
+  return result.data;
 }
 
 /**

@@ -20,7 +20,7 @@ describe.skipIf(databaseUrl === undefined)('PostgresStore', () => {
     await applySchemaAsync(sql);
     // Applying twice proves the DDL is idempotent, which is what boot does on every deploy.
     await applySchemaAsync(sql);
-    await sql`TRUNCATE runs, files, compares, judge_calls CASCADE`;
+    await sql`TRUNCATE runs, files, compares, judge_calls, examples CASCADE`;
     store = new PostgresStore(sql);
   });
 
@@ -40,6 +40,16 @@ describe.skipIf(databaseUrl === undefined)('PostgresStore', () => {
         branch: 'main',
         sha: 'abc1234',
         index: { ...index, id: 'run-a' },
+        verdicts: [
+          {
+            route: '/',
+            level: 'green',
+            score: 3,
+            defect: 'none',
+            region: undefined,
+            caption: 'fine',
+          },
+        ],
       },
       [{ name: 'index.png', bytes: png }]
     );
@@ -47,6 +57,12 @@ describe.skipIf(databaseUrl === undefined)('PostgresStore', () => {
     const stored = await store.getRunAsync('run-a');
     expect(stored?.index.routes).toHaveLength(1);
     expect(stored?.repo).toBe('ColeBlender/routeshot');
+    expect(stored?.verdicts?.[0]).toMatchObject({ route: '/', level: 'green', score: 3 });
+
+    await store.setExampleAsync('green', 'run-a');
+    await store.setExampleAsync('green', 'run-a');
+    expect(await store.getExampleRunIdAsync('green')).toBe('run-a');
+    expect(await store.getExampleRunIdAsync('nope')).toBeUndefined();
     expect(await store.getFileAsync('run-a', 'index.png')).toEqual(Buffer.from(png));
     expect(await store.getFileAsync('run-a', 'nope.png')).toBeUndefined();
 
