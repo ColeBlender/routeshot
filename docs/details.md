@@ -271,7 +271,7 @@ demo token.
 | `GET /compare?baseline=&candidate=&threshold=` | real  | diff, judge the changed screens with their code, cache by inputs            |
 | `GET /r/:id`                                   | none  | the hosted compare report                                                   |
 | `PUT /examples/:name`                          | real  | pin a judged run under a fixed public name                                  |
-| `GET /examples/:name`                          | none  | that run's judge report; the README's two "see that report" links           |
+| `GET /examples/:name`                          | none  | that run's judge report; the README's two "see an example report" links     |
 
 Same prompt, same model, same thresholds as the CLI (`judge.ts` is copied verbatim into the
 server), so a verdict from a laptop and one from CI are the same verdict. Ids are 16 random bytes;
