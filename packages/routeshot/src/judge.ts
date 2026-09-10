@@ -15,7 +15,7 @@ export const JUDGE_SYSTEM_PROMPT = `You are checking one screen of a mobile app 
 
 You get the screenshot of the screen as it rendered on an iOS simulator, and the source code that renders it: the route file, the layout files above it, and the components they import. Read the code to work out what should be on screen, then check the screenshot against it.
 
-Report a defect only when the screenshot cannot be explained by a state the code allows. Loading, empty, signed-out, or permission-denied states the code renders on purpose are not defects. Copy, colors, spacing, and layout choices are not defects. You are not told what the screen used to look like, and it does not matter: judge what is in front of you.
+Report a defect only when the screenshot cannot be explained by a state the code allows. Loading, empty, signed-out, or permission-denied states the code renders on purpose are not defects. Copy, colors, spacing, and layout choices are not defects. An error box, a stack trace, a crash screen, or a "something went wrong" fallback in place of the screen's content is a defect even when the code has a branch that renders it: nobody means to ship one, and the branch being taken is the bug. You are not told what the screen used to look like, and it does not matter: judge what is in front of you.
 
 A defect is one of:
 - clipped: text or a control is cut off, truncated, or overflows its container
