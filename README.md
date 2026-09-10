@@ -2,7 +2,7 @@
 
 Catches broken screens in your Expo app before you ship them.
 
-Add one line to your test script. Every time it runs, routeshot uses Claude to:
+Add one line to your test script. Every time it runs, routeshot uses an AI model to:
 
 1. Figure out which screens your change touched. ([how](docs/details.md#how-it-works))
 2. Open each of those screens on the iOS Simulator and screenshot it.
@@ -47,10 +47,11 @@ Here is that report, hosted: https://routeshot-server-production.up.railway.app/
 "test": "vitest run && routeshot capture --changed-since origin/main --judge"
 ```
 
-Put your own `ANTHROPIC_API_KEY` in `.env.local`, or point `routeshot.config.ts` at your own
-report server. Not on npm yet: clone this repo and `pnpm link` the package until the public
-release. Details, options, the GitHub Action, and the honest list of limitations:
-[docs/details.md](docs/details.md).
+Drop your API key in `.env.local`. routeshot works out the provider from the key itself (`sk-ant-`
+is Anthropic, `sk-` is OpenAI, `AIza` is Google) and uses that provider's best vision model. Claude
+ships today; each other provider is one adapter file. Not on npm yet: clone this repo and
+`pnpm link` the package until the public release. Details, options, the GitHub Action, and the
+honest list of limitations: [docs/details.md](docs/details.md).
 
 ## License
 
