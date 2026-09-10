@@ -48,15 +48,7 @@ npx routeshot capture --judge --open
 5 red, and the report opens with each broken screen marked up. Here is that report, hosted:
 https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w
 
-## Use it in your app
-
-```json
-"test": "vitest run && routeshot capture --changed-since origin/main --judge"
-```
-
-Put your API key in `.env.local`; routeshot picks the provider from the key (Claude ships today,
-others are one adapter file). Not on npm yet: clone and `npm link` until the public release.
-Options, the GitHub Action, and limitations: [docs/details.md](docs/details.md).
+Options, the GitHub Action, limitations, and how it works: [docs/details.md](docs/details.md).
 
 ## License
 
