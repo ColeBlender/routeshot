@@ -32,7 +32,7 @@ Terminal 2: check every screen.
 cd routeshot/example && npx routeshot capture --judge
 ```
 
-7 screens, all green. Now flip the switch. In terminal 1, press Ctrl+C to stop Metro, then restart
+7 screens, all green ([see that report](https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w)). Now flip the switch. In terminal 1, press Ctrl+C to stop Metro, then restart
 it with the broken screens:
 
 ```sh
@@ -45,10 +45,7 @@ Terminal 2 again:
 npx routeshot capture --judge --open
 ```
 
-5 red, and the report opens with each broken screen marked up. Not on a Mac? Here are the two
-reports, hosted:
-[all 7 screens green](https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w)
-and [5 broken](https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w).
+5 red, and the report opens with each broken screen marked up ([see that report](https://routeshot-server-production.up.railway.app/r/8kQ2CZ-BFS8-E3fCv0By4w)).
 
 Options, the GitHub Action, limitations, and how it works: [docs/details.md](docs/details.md).
 
